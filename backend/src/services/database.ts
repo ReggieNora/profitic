@@ -15,6 +15,7 @@ import {
   Trade,
   UserPosition,
   EvidenceLog,
+  Comment,
   MarketStatus,
   TradeSide,
   Outcome,
@@ -411,4 +412,51 @@ export async function getEvidenceByMarket(
     [marketId],
   );
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Comment helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert a comment and return the created row.
+ */
+export async function insertComment(comment: {
+  market_id: number;
+  user_address: string;
+  body: string;
+}): Promise<Comment> {
+  const { rows } = await query<Comment>(
+    `INSERT INTO comments (market_id, user_address, body)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [comment.market_id, comment.user_address, comment.body],
+  );
+  return rows[0];
+}
+
+/**
+ * Fetch comments for a market, newest first.
+ */
+export async function getCommentsByMarket(
+  marketId: number,
+  options: { page?: number; limit?: number } = {},
+): Promise<{ data: Comment[]; total: number }> {
+  const { page = 1, limit = 50 } = options;
+  const offset = (page - 1) * limit;
+
+  const countResult = await query<{ count: string }>(
+    "SELECT COUNT(*) AS count FROM comments WHERE market_id = $1",
+    [marketId],
+  );
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  const { rows } = await query<Comment>(
+    `SELECT * FROM comments WHERE market_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [marketId, limit, offset],
+  );
+
+  return { data: rows, total };
 }

@@ -59,3 +59,11 @@ export interface TradeFormData {
   amount: number;
   direction: "buy" | "sell";
 }
+
+export interface Comment {
+  id: number;
+  market_id: number;
+  user_address: string;
+  body: string;
+  created_at: string;
+}

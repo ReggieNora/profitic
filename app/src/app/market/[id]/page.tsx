@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useMarket } from "@/hooks/useMarket";
 import TradePanel from "@/components/TradePanel";
 import BondingCurveChart from "@/components/BondingCurveChart";
+import CommentSection from "@/components/CommentSection";
 import { formatProbability, lamportsToSol, formatSol } from "@/lib/bondingCurve";
 import { Trade, TradeFormData } from "@/types";
 
@@ -163,6 +164,11 @@ export default function MarketDetailPage() {
             </dd>
           </div>
         </dl>
+      </div>
+
+      {/* Discussion */}
+      <div className="mb-8">
+        <CommentSection marketId={id} />
       </div>
 
       {/* Trade History */}

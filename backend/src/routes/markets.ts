@@ -14,8 +14,10 @@ import {
   getMarketById,
   getTradesByMarket,
   getEvidenceByMarket,
+  getCommentsByMarket,
+  insertComment,
 } from "../services/database";
-import { MarketStatus, PaginatedResponse, Market, Trade, MarketDetailResponse } from "../models/types";
+import { MarketStatus, PaginatedResponse, Market, Trade, Comment, MarketDetailResponse } from "../models/types";
 
 const router = Router();
 
@@ -175,6 +177,69 @@ router.get("/:id/evidence", async (req: Request, res: Response): Promise<void> =
     res.json({ data: evidence });
   } catch (err) {
     console.error(`[markets] GET /markets/${req.params.id}/evidence error:`, err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /markets/:id/comments
+// ---------------------------------------------------------------------------
+router.get("/:id/comments", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Market ID must be an integer" });
+      return;
+    }
+
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+
+    const { data, total } = await getCommentsByMarket(id, { page, limit });
+
+    const response: PaginatedResponse<Comment> = { data, total, page, limit };
+    res.json(response);
+  } catch (err) {
+    console.error(`[markets] GET /markets/${req.params.id}/comments error:`, err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /markets/:id/comments
+// ---------------------------------------------------------------------------
+router.post("/:id/comments", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Market ID must be an integer" });
+      return;
+    }
+
+    const { user_address, body } = req.body;
+    if (!user_address || typeof user_address !== "string") {
+      res.status(400).json({ error: "user_address is required" });
+      return;
+    }
+    if (!body || typeof body !== "string" || body.trim().length === 0) {
+      res.status(400).json({ error: "body is required and must not be empty" });
+      return;
+    }
+    if (body.length > 1000) {
+      res.status(400).json({ error: "body must be 1000 characters or fewer" });
+      return;
+    }
+
+    const market = await getMarketById(id);
+    if (!market) {
+      res.status(404).json({ error: "Market not found" });
+      return;
+    }
+
+    const comment = await insertComment({ market_id: id, user_address, body: body.trim() });
+    res.status(201).json(comment);
+  } catch (err) {
+    console.error(`[markets] POST /markets/${req.params.id}/comments error:`, err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

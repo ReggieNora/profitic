@@ -177,6 +177,8 @@ async function start(): Promise<void> {
     console.log("           GET  /api/markets/:id");
     console.log("           GET  /api/markets/:id/trades");
     console.log("           GET  /api/markets/:id/evidence");
+    console.log("           GET  /api/markets/:id/comments");
+    console.log("           POST /api/markets/:id/comments");
     console.log("           GET  /api/users/:address/positions");
     console.log("           GET  /api/users/:address/history");
   });

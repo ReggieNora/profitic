@@ -175,6 +175,18 @@ export interface EvidenceLog {
   created_at: Date;
 }
 
+/**
+ * A comment on a market discussion thread.
+ * Stored in the `comments` table.
+ */
+export interface Comment {
+  id: number;
+  market_id: number;
+  user_address: string;
+  body: string;
+  created_at: Date;
+}
+
 // ---------------------------------------------------------------------------
 // API Response Wrappers
 // ---------------------------------------------------------------------------
@@ -226,7 +238,8 @@ export type WsMessage =
   | { type: "market_update"; data: Partial<Market> & { id: number } }
   | { type: "market_created"; data: Market }
   | { type: "market_resolved"; data: { id: number; winning_outcome: number; evidence_url: string } }
-  | { type: "price_update"; data: { market_id: number; yes_price: number; no_price: number } };
+  | { type: "price_update"; data: { market_id: number; yes_price: number; no_price: number } }
+  | { type: "new_comment"; data: Comment };
 
 // ---------------------------------------------------------------------------
 // Indexer Internal Types
