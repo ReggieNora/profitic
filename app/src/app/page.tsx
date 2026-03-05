@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Image from "next/image";
 import MarketCard from "@/components/MarketCard";
 import { useMarkets } from "@/hooks/useMarkets";
 import { MARKET_FILTERS } from "@/lib/constants";
@@ -25,6 +26,14 @@ export default function HomePage() {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Hero */}
       <div className="mb-10 text-center">
+        <Image
+          src="/logo.png"
+          alt="Profitic"
+          width={280}
+          height={96}
+          className="mx-auto mb-4 h-20 w-auto"
+          priority
+        />
         <h1 className="text-4xl font-bold sm:text-5xl">
           Predict the <span className="gradient-text">Future</span>
         </h1>
