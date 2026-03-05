@@ -1,0 +1,21 @@
+{
+  "name": "profitic",
+  "version": "0.1.0",
+  "description": "Solana prediction market MVP",
+  "scripts": {
+    "build": "anchor build",
+    "test": "anchor test",
+    "deploy": "anchor deploy --provider.cluster devnet",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd app && npm run dev"
+  },
+  "devDependencies": {
+    "@coral-xyz/anchor": "^0.29.0",
+    "@solana/spl-token": "^0.3.9",
+    "@solana/web3.js": "^1.87.6",
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0",
+    "ts-mocha": "^10.0.0",
+    "typescript": "^5.3.2"
+  }
+}
