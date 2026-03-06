@@ -22,31 +22,32 @@ export default function HomePage() {
     );
   }, [markets, search]);
 
+  // First market gets featured treatment
+  const featuredMarket = filteredMarkets[0];
+  const restMarkets = filteredMarkets.slice(1);
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Hero */}
-      <div className="mb-10 text-center">
+    <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-7xl sm:px-6 lg:px-8">
+      {/* Hero - compact, punchy */}
+      <div className="mb-8 text-center animate-fade-up">
         <Image
           src="/logo.png"
           alt="Profitic"
           width={280}
           height={96}
-          className="mx-auto mb-4 h-20 w-auto"
+          className="mx-auto mb-3 h-16 w-auto sm:h-20"
           priority
         />
-        <h1 className="text-4xl font-bold sm:text-5xl">
-          Predict the <span className="gradient-text">Future</span>
-        </h1>
-        <p className="mt-3 text-lg text-gray-400">
+        <p className="text-sm text-gray-400 sm:text-base">
           Trade on real-world outcomes. Powered by Solana.
         </p>
       </div>
 
-      {/* Search + Filters */}
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 sm:max-w-md">
+      {/* Search bar - minimal, TikTok-style */}
+      <div className="mb-5 animate-fade-up" style={{ animationDelay: "60ms" }}>
+        <div className="relative">
           <svg
-            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+            className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -62,19 +63,22 @@ export default function HomePage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search markets..."
-            className="input-field pl-10"
+            placeholder="Search predictions..."
+            className="w-full rounded-2xl border border-surface-50/50 bg-surface-300/80 py-3 pl-11 pr-4 text-sm text-white placeholder-gray-500 outline-none backdrop-blur-sm transition-all focus:border-primary-500/40 focus:ring-2 focus:ring-primary-500/15"
           />
         </div>
+      </div>
 
-        <div className="flex flex-wrap gap-2">
+      {/* Filter pills - horizontally scrollable on mobile */}
+      <div className="mb-6 animate-fade-up" style={{ animationDelay: "120ms" }}>
+        <div className="feed-scroll flex gap-2 overflow-x-auto pb-1">
           {MARKET_FILTERS.map((f) => (
             <button
               key={f.value}
               onClick={() => setFilter(f.value)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 active:scale-95 ${
                 filter === f.value
-                  ? "bg-primary-600 text-white"
+                  ? "bg-gradient-primary text-white shadow-md shadow-primary-500/20"
                   : "bg-surface-300 text-gray-400 hover:bg-surface-200 hover:text-white"
               }`}
             >
@@ -84,25 +88,27 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Loading */}
+      {/* Loading skeleton */}
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+        <div className="space-y-4">
+          <div className="skeleton h-48 w-full" />
+          <div className="skeleton h-40 w-full" />
+          <div className="skeleton h-40 w-full" />
         </div>
       )}
 
-      {/* Error */}
+      {/* Error banner */}
       {error && !loading && markets.length > 0 && (
-        <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-400">
+        <div className="mb-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-400 animate-fade-up">
           Using demo data &mdash; backend API is unavailable.
         </div>
       )}
 
-      {/* Markets Grid */}
+      {/* Market feed */}
       {!loading && (
         <>
           {filteredMarkets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+            <div className="flex flex-col items-center justify-center py-20 text-gray-500 animate-fade-up">
               <svg
                 className="mb-4 h-12 w-12"
                 fill="none"
@@ -122,11 +128,24 @@ export default function HomePage() {
               </p>
             </div>
           ) : (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredMarkets.map((market) => (
-                <MarketCard key={market.id} market={market} />
-              ))}
-            </div>
+            <>
+              {/* Mobile: vertical feed / Desktop: grid */}
+              <div className="stagger-children">
+                {/* Featured first card */}
+                {featuredMarket && (
+                  <div className="mb-4 sm:mb-5">
+                    <MarketCard market={featuredMarket} featured />
+                  </div>
+                )}
+
+                {/* Rest of cards */}
+                <div className="space-y-4 sm:grid sm:grid-cols-2 sm:gap-5 sm:space-y-0 lg:grid-cols-3">
+                  {restMarkets.map((market) => (
+                    <MarketCard key={market.id} market={market} />
+                  ))}
+                </div>
+              </div>
+            </>
           )}
         </>
       )}

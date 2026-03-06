@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMarket } from "@/hooks/useMarket";
 import TradePanel from "@/components/TradePanel";
@@ -38,7 +39,6 @@ export default function MarketDetailPage() {
   const { market, trades, loading, error, refetch } = useMarket(id);
 
   const handleTrade = async (trade: TradeFormData) => {
-    // In production, this would call the Anchor program
     console.log("Trade submitted:", trade);
     alert(
       `Trade submitted: ${trade.direction} ${trade.amount} ${trade.outcome.toUpperCase()} shares.\n\nIn production, this calls the Solana program.`
@@ -48,117 +48,150 @@ export default function MarketDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-32">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+      <div className="mx-auto max-w-lg px-4 py-8 sm:max-w-7xl sm:px-6">
+        <div className="space-y-4">
+          <div className="skeleton h-8 w-3/4" />
+          <div className="skeleton h-5 w-1/2" />
+          <div className="mt-6 grid gap-4 sm:grid-cols-4">
+            <div className="skeleton h-24" />
+            <div className="skeleton h-24" />
+            <div className="skeleton h-24" />
+            <div className="skeleton h-24" />
+          </div>
+          <div className="skeleton mt-4 h-64" />
+        </div>
       </div>
     );
   }
 
   if (!market) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-32 text-gray-400 animate-fade-up">
         <p className="text-lg font-medium">Market not found</p>
         <p className="mt-1 text-sm">{error || "The market you are looking for does not exist."}</p>
+        <Link href="/" className="mt-4 text-sm text-primary-400 hover:underline">
+          Back to home
+        </Link>
       </div>
     );
   }
 
+  const yesPercent = Math.round(market.yesPrice * 100);
+  const noPercent = Math.round(market.noPrice * 100);
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-7xl sm:px-6 lg:px-8">
+      {/* Back button */}
+      <Link
+        href="/"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-white"
+      >
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </Link>
+
       {/* Header */}
-      <div className="mb-8">
-        <div className="mb-3 flex items-center gap-3">
+      <div className="mb-6 animate-fade-up">
+        <div className="mb-3 flex items-center gap-2">
           <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
               market.resolved
-                ? "bg-gray-500/20 text-gray-400"
-                : "bg-green-500/20 text-green-400"
+                ? "bg-gray-500/15 text-gray-400"
+                : "bg-green-500/15 text-green-400"
             }`}
           >
             {market.resolved ? "Resolved" : "Active"}
           </span>
-          <span className="text-sm text-gray-500">
-            Created by {shortenAddress(market.creator)}
+          <span className="text-xs text-gray-500">
+            by {shortenAddress(market.creator)}
           </span>
         </div>
-        <h1 className="text-2xl font-bold text-white sm:text-3xl">
+        <h1 className="text-2xl font-bold leading-tight text-white sm:text-3xl">
           {market.question}
         </h1>
-        <p className="mt-3 text-gray-400">{market.description}</p>
+        <p className="mt-2 text-sm text-gray-400 leading-relaxed">{market.description}</p>
       </div>
 
-      {/* Stats Row */}
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="card text-center">
-          <p className="text-sm text-gray-400">YES Price</p>
-          <p className="mt-1 text-2xl font-bold text-green-400">
-            {formatProbability(market.yesPrice)}
-          </p>
+      {/* Big probability display - mobile first */}
+      <div className="mb-6 flex gap-3 animate-fade-up" style={{ animationDelay: "60ms" }}>
+        <div className="flex-1 overflow-hidden rounded-2xl border border-green-500/20 bg-green-500/5 p-4 text-center">
+          <div className="text-xs font-semibold uppercase tracking-wider text-green-400/70">Yes</div>
+          <div className="mt-1 text-3xl font-black tabular-nums text-green-400">
+            {yesPercent}<span className="text-lg font-bold">%</span>
+          </div>
         </div>
-        <div className="card text-center">
-          <p className="text-sm text-gray-400">NO Price</p>
-          <p className="mt-1 text-2xl font-bold text-red-400">
-            {formatProbability(market.noPrice)}
-          </p>
+        <div className="flex-1 overflow-hidden rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-center">
+          <div className="text-xs font-semibold uppercase tracking-wider text-red-400/70">No</div>
+          <div className="mt-1 text-3xl font-black tabular-nums text-red-400">
+            {noPercent}<span className="text-lg font-bold">%</span>
+          </div>
         </div>
-        <div className="card text-center">
-          <p className="text-sm text-gray-400">Volume</p>
-          <p className="mt-1 text-2xl font-bold text-white">
+      </div>
+
+      {/* Stats row */}
+      <div className="mb-6 grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: "120ms" }}>
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
+          <p className="text-xs font-medium text-gray-500">Volume</p>
+          <p className="mt-1 text-lg font-bold text-white">
             {formatSol(lamportsToSol(market.totalVolume))}
           </p>
         </div>
-        <div className="card text-center">
-          <p className="text-sm text-gray-400">Resolves</p>
-          <p className="mt-1 text-lg font-bold text-white">
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
+          <p className="text-xs font-medium text-gray-500">Resolves</p>
+          <p className="mt-1 text-sm font-bold text-white">
             {formatDate(market.resolutionDate)}
           </p>
         </div>
       </div>
 
-      {/* Main Content: Chart + Trade Panel */}
-      <div className="mb-8 grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      {/* Chart + Trade Panel */}
+      <div className="mb-6 grid gap-5 lg:grid-cols-3">
+        <div className="lg:col-span-2 animate-fade-up" style={{ animationDelay: "180ms" }}>
           <BondingCurveChart
             yesShares={market.yesShares}
             noShares={market.noShares}
           />
         </div>
-        <div>
+        <div className="animate-fade-up" style={{ animationDelay: "240ms" }}>
           <TradePanel market={market} onTrade={handleTrade} />
         </div>
       </div>
 
       {/* Market Info */}
-      <div className="mb-8 card">
-        <h3 className="mb-3 text-lg font-semibold text-white">Market Details</h3>
+      <div className="mb-6 rounded-2xl border border-surface-50/50 bg-surface-300 p-5 animate-fade-up">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">
+          Market Details
+        </h3>
         <dl className="grid gap-4 sm:grid-cols-2">
           <div>
-            <dt className="text-sm text-gray-400">Data Source</dt>
+            <dt className="text-xs text-gray-500">Data Source</dt>
             <dd className="mt-1">
               <a
                 href={market.dataSourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-accent-400 hover:underline"
+                className="text-sm text-accent-400 hover:underline break-all"
               >
                 {market.dataSourceUrl}
               </a>
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-400">Liquidity Pool</dt>
+            <dt className="text-xs text-gray-500">Liquidity Pool</dt>
             <dd className="mt-1 text-sm font-medium text-white">
               {formatSol(lamportsToSol(market.liquidityPool))}
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-400">YES Shares Outstanding</dt>
+            <dt className="text-xs text-gray-500">YES Shares</dt>
             <dd className="mt-1 text-sm font-medium text-white">
               {market.yesShares.toLocaleString()}
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-400">NO Shares Outstanding</dt>
+            <dt className="text-xs text-gray-500">NO Shares</dt>
             <dd className="mt-1 text-sm font-medium text-white">
               {market.noShares.toLocaleString()}
             </dd>
@@ -167,33 +200,35 @@ export default function MarketDetailPage() {
       </div>
 
       {/* Discussion */}
-      <div className="mb-8">
+      <div className="mb-6">
         <CommentSection marketId={id} />
       </div>
 
       {/* Trade History */}
-      <div className="card">
-        <h3 className="mb-4 text-lg font-semibold text-white">Trade History</h3>
+      <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-5">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-400">
+          Trade History
+        </h3>
         {trades.length === 0 ? (
-          <p className="py-8 text-center text-gray-500">No trades yet.</p>
+          <p className="py-8 text-center text-sm text-gray-500">No trades yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-surface-50 text-gray-400">
-                  <th className="pb-3 pr-4 font-medium">Time</th>
-                  <th className="pb-3 pr-4 font-medium">Trader</th>
-                  <th className="pb-3 pr-4 font-medium">Type</th>
-                  <th className="pb-3 pr-4 font-medium">Outcome</th>
-                  <th className="pb-3 pr-4 font-medium text-right">Shares</th>
-                  <th className="pb-3 pr-4 font-medium text-right">Price</th>
-                  <th className="pb-3 font-medium text-right">Cost</th>
+                <tr className="border-b border-surface-50/50 text-gray-500">
+                  <th className="pb-3 pr-4 text-xs font-medium">Time</th>
+                  <th className="pb-3 pr-4 text-xs font-medium">Trader</th>
+                  <th className="pb-3 pr-4 text-xs font-medium">Type</th>
+                  <th className="pb-3 pr-4 text-xs font-medium">Outcome</th>
+                  <th className="pb-3 pr-4 text-xs font-medium text-right">Shares</th>
+                  <th className="pb-3 pr-4 text-xs font-medium text-right">Price</th>
+                  <th className="pb-3 text-xs font-medium text-right">Cost</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-surface-50">
+              <tbody className="divide-y divide-surface-50/30">
                 {trades.map((trade: Trade) => (
-                  <tr key={trade.id} className="text-gray-300 hover:bg-surface-400/50">
-                    <td className="py-3 pr-4 text-gray-500">
+                  <tr key={trade.id} className="text-gray-300 transition-colors hover:bg-surface-400/30">
+                    <td className="py-3 pr-4 text-xs text-gray-500">
                       {timeAgo(trade.timestamp)}
                     </td>
                     <td className="py-3 pr-4 font-mono text-xs">
@@ -201,10 +236,10 @@ export default function MarketDetailPage() {
                     </td>
                     <td className="py-3 pr-4">
                       <span
-                        className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                        className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
                           trade.direction === "buy"
-                            ? "bg-green-500/20 text-green-400"
-                            : "bg-red-500/20 text-red-400"
+                            ? "bg-green-500/15 text-green-400"
+                            : "bg-red-500/15 text-red-400"
                         }`}
                       >
                         {trade.direction.toUpperCase()}
@@ -212,22 +247,22 @@ export default function MarketDetailPage() {
                     </td>
                     <td className="py-3 pr-4">
                       <span
-                        className={
+                        className={`text-xs font-semibold ${
                           trade.outcome === "yes"
                             ? "text-green-400"
                             : "text-red-400"
-                        }
+                        }`}
                       >
                         {trade.outcome.toUpperCase()}
                       </span>
                     </td>
-                    <td className="py-3 pr-4 text-right font-mono">
+                    <td className="py-3 pr-4 text-right font-mono text-xs">
                       {trade.shares.toLocaleString()}
                     </td>
-                    <td className="py-3 pr-4 text-right font-mono">
+                    <td className="py-3 pr-4 text-right font-mono text-xs">
                       {trade.price.toFixed(2)}
                     </td>
-                    <td className="py-3 text-right font-mono">
+                    <td className="py-3 text-right font-mono text-xs">
                       {lamportsToSol(trade.cost).toFixed(4)} SOL
                     </td>
                   </tr>

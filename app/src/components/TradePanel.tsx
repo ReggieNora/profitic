@@ -65,10 +65,10 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
 
   if (market.resolved) {
     return (
-      <div className="card">
+      <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-5">
         <div className="text-center">
-          <p className="text-lg font-semibold text-gray-400">Market Resolved</p>
-          <p className="mt-2 text-2xl font-bold">
+          <p className="text-sm font-semibold text-gray-400">Market Resolved</p>
+          <p className="mt-2 text-3xl font-black">
             <span
               className={
                 market.outcome === "yes" ? "text-green-400" : "text-red-400"
@@ -83,20 +83,20 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
   }
 
   return (
-    <div className="card space-y-5">
-      <h3 className="text-lg font-semibold text-white">Trade</h3>
+    <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-5 space-y-4">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-400">Trade</h3>
 
       {/* Direction Toggle */}
-      <div className="flex rounded-lg bg-surface-400 p-1">
+      <div className="flex rounded-xl bg-surface-400 p-1">
         {(["buy", "sell"] as const).map((d) => (
           <button
             key={d}
             onClick={() => setDirection(d)}
-            className={`flex-1 rounded-md py-2 text-sm font-semibold capitalize transition-colors ${
+            className={`flex-1 rounded-lg py-2.5 text-sm font-semibold capitalize transition-all duration-200 active:scale-95 ${
               direction === d
                 ? d === "buy"
-                  ? "bg-green-500/20 text-green-400"
-                  : "bg-red-500/20 text-red-400"
+                  ? "bg-green-500/15 text-green-400 shadow-sm"
+                  : "bg-red-500/15 text-red-400 shadow-sm"
                 : "text-gray-400 hover:text-white"
             }`}
           >
@@ -107,33 +107,37 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
 
       {/* Outcome Selector */}
       <div>
-        <label className="mb-2 block text-sm font-medium text-gray-400">
+        <label className="mb-2 block text-xs font-medium text-gray-500">
           Outcome
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => setOutcome("yes")}
-            className={`rounded-lg border px-4 py-3 text-center font-semibold transition-all ${
+            className={`rounded-xl border p-3 text-center transition-all duration-200 active:scale-95 ${
               outcome === "yes"
-                ? "border-green-500/50 bg-green-500/10 text-green-400"
-                : "border-surface-50 bg-surface-400 text-gray-400 hover:border-green-500/30"
+                ? "border-green-500/40 bg-green-500/10 shadow-sm shadow-green-500/10"
+                : "border-surface-50/50 bg-surface-400 hover:border-green-500/20"
             }`}
           >
-            <div className="text-lg">YES</div>
-            <div className="text-xs opacity-75">
+            <div className={`text-sm font-bold ${outcome === "yes" ? "text-green-400" : "text-gray-400"}`}>
+              YES
+            </div>
+            <div className={`mt-0.5 text-xs ${outcome === "yes" ? "text-green-400/60" : "text-gray-500"}`}>
               {formatProbability(currentYesPrice)}
             </div>
           </button>
           <button
             onClick={() => setOutcome("no")}
-            className={`rounded-lg border px-4 py-3 text-center font-semibold transition-all ${
+            className={`rounded-xl border p-3 text-center transition-all duration-200 active:scale-95 ${
               outcome === "no"
-                ? "border-red-500/50 bg-red-500/10 text-red-400"
-                : "border-surface-50 bg-surface-400 text-gray-400 hover:border-red-500/30"
+                ? "border-red-500/40 bg-red-500/10 shadow-sm shadow-red-500/10"
+                : "border-surface-50/50 bg-surface-400 hover:border-red-500/20"
             }`}
           >
-            <div className="text-lg">NO</div>
-            <div className="text-xs opacity-75">
+            <div className={`text-sm font-bold ${outcome === "no" ? "text-red-400" : "text-gray-400"}`}>
+              NO
+            </div>
+            <div className={`mt-0.5 text-xs ${outcome === "no" ? "text-red-400/60" : "text-gray-500"}`}>
               {formatProbability(currentNoPrice)}
             </div>
           </button>
@@ -142,7 +146,7 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
 
       {/* Amount Input */}
       <div>
-        <label className="mb-2 block text-sm font-medium text-gray-400">
+        <label className="mb-2 block text-xs font-medium text-gray-500">
           {direction === "buy" ? "Shares to Buy" : "Shares to Sell"}
         </label>
         <div className="relative">
@@ -153,9 +157,9 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
             placeholder="0.00"
             min="0"
             step="0.01"
-            className="input-field pr-14"
+            className="w-full rounded-xl border border-surface-50/50 bg-surface-400 py-3 pl-4 pr-14 text-white placeholder-gray-500 outline-none transition-all focus:border-primary-500/40 focus:ring-2 focus:ring-primary-500/15"
           />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-500">
             SOL
           </span>
         </div>
@@ -163,18 +167,18 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
 
       {/* Estimated Cost */}
       {amountNum > 0 && (
-        <div className="rounded-lg bg-surface-400 p-4 space-y-2">
+        <div className="rounded-xl bg-surface-400/80 p-3.5 space-y-2 animate-fade-in">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400">
-              {direction === "buy" ? "Estimated Cost" : "Estimated Return"}
+            <span className="text-xs text-gray-500">
+              {direction === "buy" ? "Est. Cost" : "Est. Return"}
             </span>
-            <span className="font-semibold text-white">
+            <span className="font-bold text-white">
               {lamportsToSol(estimatedCost).toFixed(4)} SOL
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400">Avg Price per Share</span>
-            <span className="font-semibold text-white">
+            <span className="text-xs text-gray-500">Avg Price</span>
+            <span className="font-bold text-white">
               {amountLamports > 0
                 ? (estimatedCost / amountLamports).toFixed(4)
                 : "0.0000"}{" "}
@@ -189,15 +193,20 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
         <button
           onClick={handleSubmit}
           disabled={loading || amountNum <= 0}
-          className={`w-full rounded-lg py-3 font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`w-full rounded-xl py-3.5 font-bold text-white transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
             direction === "buy"
-              ? "bg-green-600 hover:bg-green-500"
-              : "bg-red-600 hover:bg-red-500"
+              ? "bg-green-600 hover:bg-green-500 shadow-lg shadow-green-600/20"
+              : "bg-red-600 hover:bg-red-500 shadow-lg shadow-red-600/20"
           }`}
         >
-          {loading
-            ? "Processing..."
-            : `${direction === "buy" ? "Buy" : "Sell"} ${outcome.toUpperCase()} Shares`}
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              Processing...
+            </span>
+          ) : (
+            `${direction === "buy" ? "Buy" : "Sell"} ${outcome.toUpperCase()}`
+          )}
         </button>
       ) : (
         <div className="flex justify-center">

@@ -53,6 +53,15 @@ const config: Config = {
           "linear-gradient(180deg, rgba(107,31,255,0.08) 0%, rgba(0,119,230,0.08) 100%)",
         "gradient-glow":
           "radial-gradient(ellipse at center, rgba(107,31,255,0.15) 0%, transparent 70%)",
+        "gradient-hot":
+          "linear-gradient(135deg, #ff6b35 0%, #f7c948 100%)",
+      },
+      borderRadius: {
+        "2xl": "1rem",
+        "3xl": "1.5rem",
+      },
+      transitionTimingFunction: {
+        "bounce-in": "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
       },
     },
   },

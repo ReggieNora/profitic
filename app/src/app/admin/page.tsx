@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Market, MarketOutcome } from "@/types";
+import { Market } from "@/types";
 import { ADMIN_WALLETS, API_URL } from "@/lib/constants";
 import { formatProbability, formatSol, lamportsToSol } from "@/lib/bondingCurve";
 
@@ -64,7 +64,6 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAdmin) {
       setLoading(true);
-      // In production: GET /api/admin/markets/pending
       setTimeout(() => {
         setMarkets(getDemoPendingMarkets());
         setLoading(false);
@@ -81,7 +80,6 @@ export default function AdminPage() {
 
     setResolving(marketId);
     try {
-      // In production, call the resolveMarket Anchor instruction
       console.log("Resolving market:", {
         marketId,
         outcome: form.outcome,
@@ -118,41 +116,41 @@ export default function AdminPage() {
     }));
   };
 
-  // Not connected
   if (!connected) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6">
-        <h1 className="mb-4 text-2xl font-bold text-white">Admin Panel</h1>
-        <p className="mb-6 text-gray-400">
-          Connect an admin wallet to manage market resolutions.
+      <div className="mx-auto max-w-lg px-4 py-20 text-center animate-fade-up">
+        <h1 className="mb-3 text-2xl font-bold text-white">Admin Panel</h1>
+        <p className="mb-6 text-sm text-gray-400">
+          Connect an admin wallet to manage resolutions.
         </p>
         <WalletMultiButton />
       </div>
     );
   }
 
-  // Not admin
   if (!isAdmin) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6">
-        <svg
-          className="mx-auto mb-4 h-16 w-16 text-red-500/50"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      <div className="mx-auto max-w-lg px-4 py-20 text-center animate-fade-up">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/10">
+          <svg
+            className="h-7 w-7 text-red-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
             strokeWidth={1.5}
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"
-          />
-        </svg>
-        <h1 className="mb-2 text-2xl font-bold text-white">Access Denied</h1>
-        <p className="text-gray-400">
-          The connected wallet does not have admin privileges.
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"
+            />
+          </svg>
+        </div>
+        <h1 className="mb-2 text-xl font-bold text-white">Access Denied</h1>
+        <p className="text-sm text-gray-400">
+          This wallet doesn&apos;t have admin privileges.
         </p>
-        <p className="mt-2 font-mono text-xs text-gray-600">
+        <p className="mt-2 font-mono text-[11px] text-gray-600">
           {publicKey?.toBase58()}
         </p>
       </div>
@@ -160,27 +158,28 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
-        <p className="mt-1 text-gray-400">
+    <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-5xl sm:px-6 lg:px-8">
+      <div className="mb-6 animate-fade-up">
+        <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
+        <p className="mt-1 text-sm text-gray-400">
           Manage markets pending resolution.
         </p>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+        <div className="space-y-4">
+          <div className="skeleton h-48" />
+          <div className="skeleton h-48" />
         </div>
       ) : markets.length === 0 ? (
-        <div className="card py-12 text-center text-gray-500">
-          <p className="text-lg font-medium">No markets pending resolution</p>
-          <p className="mt-1 text-sm">
-            Markets will appear here after their resolution date has passed.
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 py-12 text-center animate-fade-up">
+          <p className="text-sm font-medium text-gray-400">No markets pending resolution</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Markets appear here after their resolution date.
           </p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5 stagger-children">
           {markets.map((market) => {
             const form = resolveForm[market.id] || {
               outcome: "yes",
@@ -189,126 +188,109 @@ export default function AdminPage() {
             const isCurrentResolving = resolving === market.id;
 
             return (
-              <div key={market.id} className="card space-y-4">
+              <div key={market.id} className="rounded-2xl border border-surface-50/50 bg-surface-300 p-5 space-y-4">
                 {/* Market Info */}
                 <div>
-                  <div className="mb-2 flex items-center gap-3">
-                    <span className="rounded-full bg-yellow-500/20 px-3 py-0.5 text-xs font-medium text-yellow-400">
-                      Pending Resolution
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="rounded-full bg-yellow-500/15 px-2.5 py-1 text-[11px] font-bold text-yellow-400">
+                      Pending
                     </span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-[11px] text-gray-500">
                       Ended{" "}
                       {new Date(
                         market.resolutionDate * 1000
                       ).toLocaleDateString()}
                     </span>
                   </div>
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-base font-bold text-white">
                     {market.question}
                   </h3>
-                  <p className="mt-1 text-sm text-gray-400">
+                  <p className="mt-1 text-xs text-gray-400 leading-relaxed">
                     {market.description}
                   </p>
                 </div>
 
-                {/* Market Stats */}
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
-                    <p className="text-xs text-gray-500">YES Price</p>
-                    <p className="font-semibold text-green-400">
+                    <p className="text-[11px] text-gray-500">YES</p>
+                    <p className="text-sm font-bold text-green-400">
                       {formatProbability(market.yesPrice)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">NO Price</p>
-                    <p className="font-semibold text-red-400">
+                    <p className="text-[11px] text-gray-500">NO</p>
+                    <p className="text-sm font-bold text-red-400">
                       {formatProbability(market.noPrice)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Volume</p>
-                    <p className="font-semibold text-white">
+                    <p className="text-[11px] text-gray-500">Volume</p>
+                    <p className="text-sm font-bold text-white">
                       {formatSol(lamportsToSol(market.totalVolume))}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Data Source</p>
+                    <p className="text-[11px] text-gray-500">Source</p>
                     <a
                       href={market.dataSourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-accent-400 hover:underline"
+                      className="text-xs text-accent-400 hover:underline"
                     >
-                      View Source
+                      View
                     </a>
                   </div>
                 </div>
 
                 {/* Resolution Form */}
-                <div className="rounded-lg border border-surface-50 bg-surface-400 p-4">
-                  <h4 className="mb-3 text-sm font-semibold text-gray-300">
-                    Resolve Market
+                <div className="rounded-xl bg-surface-400/80 p-4 space-y-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                    Resolve
                   </h4>
-                  <div className="space-y-3">
-                    {/* Outcome Selector */}
-                    <div>
-                      <label className="mb-1 block text-xs text-gray-500">
-                        Outcome
-                      </label>
-                      <div className="flex gap-2">
-                        {(["yes", "no", "invalid"] as const).map((o) => (
-                          <button
-                            key={o}
-                            onClick={() =>
-                              updateResolveForm(market.id, "outcome", o)
-                            }
-                            className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize transition-all ${
-                              form.outcome === o
-                                ? o === "yes"
-                                  ? "bg-green-500/20 text-green-400 ring-1 ring-green-500/50"
-                                  : o === "no"
-                                  ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/50"
-                                  : "bg-yellow-500/20 text-yellow-400 ring-1 ring-yellow-500/50"
-                                : "bg-surface-300 text-gray-400 hover:text-white"
-                            }`}
-                          >
-                            {o}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Evidence URL */}
-                    <div>
-                      <label className="mb-1 block text-xs text-gray-500">
-                        Evidence URL
-                      </label>
-                      <input
-                        type="url"
-                        value={form.evidenceUrl}
-                        onChange={(e) =>
-                          updateResolveForm(
-                            market.id,
-                            "evidenceUrl",
-                            e.target.value
-                          )
+                  <div className="flex gap-2">
+                    {(["yes", "no", "invalid"] as const).map((o) => (
+                      <button
+                        key={o}
+                        onClick={() =>
+                          updateResolveForm(market.id, "outcome", o)
                         }
-                        placeholder="https://..."
-                        className="input-field"
-                      />
-                    </div>
-
-                    {/* Submit */}
-                    <button
-                      onClick={() => handleResolve(market.id)}
-                      disabled={isCurrentResolving || !form.evidenceUrl.trim()}
-                      className="btn-primary w-full"
-                    >
-                      {isCurrentResolving
-                        ? "Resolving..."
-                        : `Resolve as ${form.outcome.toUpperCase()}`}
-                    </button>
+                        className={`rounded-xl px-4 py-2 text-xs font-bold capitalize transition-all active:scale-95 ${
+                          form.outcome === o
+                            ? o === "yes"
+                              ? "bg-green-500/15 text-green-400 ring-1 ring-green-500/30"
+                              : o === "no"
+                              ? "bg-red-500/15 text-red-400 ring-1 ring-red-500/30"
+                              : "bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"
+                            : "bg-surface-300 text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        {o}
+                      </button>
+                    ))}
                   </div>
+                  <input
+                    type="url"
+                    value={form.evidenceUrl}
+                    onChange={(e) =>
+                      updateResolveForm(
+                        market.id,
+                        "evidenceUrl",
+                        e.target.value
+                      )
+                    }
+                    placeholder="Evidence URL..."
+                    className="input-field text-sm"
+                  />
+                  <button
+                    onClick={() => handleResolve(market.id)}
+                    disabled={isCurrentResolving || !form.evidenceUrl.trim()}
+                    className="btn-primary w-full"
+                  >
+                    {isCurrentResolving
+                      ? "Resolving..."
+                      : `Resolve ${form.outcome.toUpperCase()}`}
+                  </button>
                 </div>
               </div>
             );

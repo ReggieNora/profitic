@@ -36,13 +36,11 @@ export default function CreateMarketPage() {
 
     setLoading(true);
     try {
-      // Combine date and time into a Unix timestamp
       const dateTime = new Date(
         `${form.resolutionDate}T${form.resolutionTime}`
       );
       const resolutionTimestamp = Math.floor(dateTime.getTime() / 1000);
 
-      // In production, this calls the Anchor program's createMarket instruction
       console.log("Creating market:", {
         ...form,
         resolutionTimestamp,
@@ -61,48 +59,49 @@ export default function CreateMarketPage() {
     }
   };
 
-  // Minimum date is tomorrow
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = tomorrow.toISOString().split("T")[0];
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white">Create Market</h1>
-        <p className="mt-2 text-gray-400">
-          Create a new prediction market for others to trade on.
+    <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-2xl sm:px-6">
+      <div className="mb-6 animate-fade-up">
+        <h1 className="text-2xl font-bold text-white">Create Market</h1>
+        <p className="mt-1 text-sm text-gray-400">
+          Create a prediction market for others to trade on.
         </p>
       </div>
 
       {!connected ? (
-        <div className="card flex flex-col items-center py-12">
-          <svg
-            className="mb-4 h-12 w-12 text-gray-500"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 py-16 text-center animate-fade-up">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-400">
+            <svg
+              className="h-7 w-7 text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
               strokeWidth={1.5}
-              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-            />
-          </svg>
-          <p className="mb-4 text-lg font-medium text-gray-400">
-            Connect your wallet to create a market
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
+            </svg>
+          </div>
+          <p className="mb-4 text-sm font-medium text-gray-400">
+            Connect wallet to create a market
           </p>
           <WalletMultiButton />
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Question */}
-          <div className="card space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5 animate-fade-up">
+          <div className="space-y-4 rounded-2xl border border-surface-50/50 bg-surface-300 p-5">
+            {/* Question */}
             <div>
               <label
                 htmlFor="question"
-                className="mb-2 block text-sm font-medium text-gray-300"
+                className="mb-1.5 block text-xs font-semibold text-gray-400"
               >
                 Question <span className="text-red-400">*</span>
               </label>
@@ -116,8 +115,8 @@ export default function CreateMarketPage() {
                 className="input-field"
                 maxLength={200}
               />
-              <p className="mt-1.5 text-xs text-gray-500">
-                Ask a clear yes/no question. Min 10 characters.
+              <p className="mt-1 text-[11px] text-gray-600">
+                Clear yes/no question. Min 10 characters.
               </p>
             </div>
 
@@ -125,7 +124,7 @@ export default function CreateMarketPage() {
             <div>
               <label
                 htmlFor="description"
-                className="mb-2 block text-sm font-medium text-gray-300"
+                className="mb-1.5 block text-xs font-semibold text-gray-400"
               >
                 Description <span className="text-red-400">*</span>
               </label>
@@ -134,24 +133,24 @@ export default function CreateMarketPage() {
                 name="description"
                 value={form.description}
                 onChange={handleChange}
-                placeholder="Describe the resolution criteria clearly. What exactly needs to happen for this to resolve YES?"
-                rows={4}
+                placeholder="Describe the resolution criteria clearly..."
+                rows={3}
                 className="input-field resize-none"
                 maxLength={1000}
               />
-              <p className="mt-1.5 text-xs text-gray-500">
-                Be specific about resolution criteria. Min 20 characters.
+              <p className="mt-1 text-[11px] text-gray-600">
+                Resolution criteria. Min 20 characters.
               </p>
             </div>
 
             {/* Resolution Date + Time */}
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label
                   htmlFor="resolutionDate"
-                  className="mb-2 block text-sm font-medium text-gray-300"
+                  className="mb-1.5 block text-xs font-semibold text-gray-400"
                 >
-                  Resolution Date <span className="text-red-400">*</span>
+                  Date <span className="text-red-400">*</span>
                 </label>
                 <input
                   id="resolutionDate"
@@ -166,9 +165,9 @@ export default function CreateMarketPage() {
               <div>
                 <label
                   htmlFor="resolutionTime"
-                  className="mb-2 block text-sm font-medium text-gray-300"
+                  className="mb-1.5 block text-xs font-semibold text-gray-400"
                 >
-                  Resolution Time (UTC)
+                  Time (UTC)
                 </label>
                 <input
                   id="resolutionTime"
@@ -185,9 +184,9 @@ export default function CreateMarketPage() {
             <div>
               <label
                 htmlFor="dataSourceUrl"
-                className="mb-2 block text-sm font-medium text-gray-300"
+                className="mb-1.5 block text-xs font-semibold text-gray-400"
               >
-                Data Source URL <span className="text-red-400">*</span>
+                Data Source <span className="text-red-400">*</span>
               </label>
               <input
                 id="dataSourceUrl"
@@ -198,28 +197,28 @@ export default function CreateMarketPage() {
                 placeholder="https://www.coingecko.com/en/coins/bitcoin"
                 className="input-field"
               />
-              <p className="mt-1.5 text-xs text-gray-500">
-                URL of the data source used to verify the outcome.
+              <p className="mt-1 text-[11px] text-gray-600">
+                URL to verify the outcome.
               </p>
             </div>
           </div>
 
           {/* Preview */}
           {form.question && (
-            <div className="card border-primary-500/20">
-              <h3 className="mb-2 text-sm font-medium text-gray-400">
+            <div className="rounded-2xl border border-primary-500/20 bg-primary-500/5 p-5 animate-fade-in">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                 Preview
-              </h3>
-              <p className="text-lg font-semibold text-white">
+              </p>
+              <p className="text-base font-bold text-white">
                 {form.question}
               </p>
               {form.description && (
-                <p className="mt-2 text-sm text-gray-400">
+                <p className="mt-2 text-xs text-gray-400 leading-relaxed">
                   {form.description}
                 </p>
               )}
               {form.resolutionDate && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-[11px] text-gray-500">
                   Resolves:{" "}
                   {new Date(
                     `${form.resolutionDate}T${form.resolutionTime}`
@@ -233,12 +232,12 @@ export default function CreateMarketPage() {
           <button
             type="submit"
             disabled={!isValid || loading}
-            className="btn-primary w-full py-3"
+            className="btn-primary w-full py-3.5"
           >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Creating Market...
+                Creating...
               </span>
             ) : (
               "Create Market"

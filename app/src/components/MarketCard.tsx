@@ -22,74 +22,116 @@ function timeRemaining(resolutionDate: number): string {
 
 interface MarketCardProps {
   market: Market;
+  featured?: boolean;
 }
 
-export default function MarketCard({ market }: MarketCardProps) {
+export default function MarketCard({ market, featured }: MarketCardProps) {
   const isResolved = market.resolved;
   const timeLeft = timeRemaining(market.resolutionDate);
   const volume = formatSol(lamportsToSol(market.totalVolume));
+  const yesPercent = Math.round(market.yesPrice * 100);
+  const noPercent = Math.round(market.noPrice * 100);
+  const isHot = lamportsToSol(market.totalVolume) > 30;
 
   return (
-    <Link href={`/market/${market.id}`}>
-      <div className="card-hover group cursor-pointer">
-        {/* Status Badge */}
-        <div className="mb-3 flex items-center justify-between">
+    <Link href={`/market/${market.id}`} className="block">
+      <div
+        className={`group relative overflow-hidden rounded-2xl border transition-all duration-300 active:scale-[0.98] ${
+          featured
+            ? "border-primary-500/30 bg-gradient-to-b from-primary-500/10 to-surface-300 p-6"
+            : "border-surface-50/50 bg-surface-300 p-5 hover:border-primary-500/20 hover:shadow-lg hover:shadow-primary-500/5"
+        }`}
+      >
+        {/* Glow effect for featured/hot */}
+        {(featured || isHot) && (
+          <div className="absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-primary-500/10 blur-3xl" />
+        )}
+
+        {/* Top row: badges */}
+        <div className="relative mb-4 flex items-center gap-2">
+          {isHot && !isResolved && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-orange-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse" />
+              Hot
+            </span>
+          )}
           <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${
               isResolved
-                ? "bg-gray-500/20 text-gray-400"
+                ? "bg-gray-500/15 text-gray-400"
                 : timeLeft === "Ended"
-                ? "bg-yellow-500/20 text-yellow-400"
-                : "bg-green-500/20 text-green-400"
+                ? "bg-yellow-500/15 text-yellow-400"
+                : "bg-green-500/15 text-green-400"
             }`}
           >
             {isResolved
-              ? `Resolved: ${market.outcome.toUpperCase()}`
+              ? `Resolved ${market.outcome.toUpperCase()}`
               : timeLeft === "Ended"
               ? "Awaiting Resolution"
               : `${timeLeft} left`}
           </span>
-          <span className="text-xs text-gray-500">{volume} vol</span>
+          <span className="ml-auto text-xs font-medium text-gray-500">
+            {volume}
+          </span>
         </div>
 
         {/* Question */}
-        <h3 className="mb-4 line-clamp-2 text-base font-semibold text-white group-hover:text-primary-300 transition-colors">
+        <h3
+          className={`mb-5 line-clamp-2 font-bold text-white transition-colors group-hover:text-primary-200 ${
+            featured ? "text-xl leading-tight" : "text-base leading-snug"
+          }`}
+        >
           {market.question}
         </h3>
 
-        {/* Probability Bars */}
-        <div className="space-y-2">
-          {/* YES */}
-          <div className="flex items-center gap-3">
-            <span className="w-8 text-xs font-semibold text-green-400">YES</span>
-            <div className="relative h-8 flex-1 overflow-hidden rounded-lg bg-surface-400">
-              <div
-                className="absolute inset-y-0 left-0 rounded-lg bg-green-500/20 transition-all duration-500"
-                style={{ width: `${market.yesPrice * 100}%` }}
-              />
-              <div className="relative flex h-full items-center px-3">
-                <span className="text-sm font-bold text-green-400">
-                  {formatProbability(market.yesPrice)}
-                </span>
+        {/* Quick bet buttons - the main visual element */}
+        <div className="relative flex gap-3">
+          {/* YES button */}
+          <button
+            onClick={(e) => e.preventDefault()}
+            className="group/btn relative flex-1 overflow-hidden rounded-xl border border-green-500/20 bg-green-500/5 p-3 text-center transition-all duration-200 hover:border-green-500/40 hover:bg-green-500/10 active:scale-95"
+          >
+            <div className="absolute inset-0 bg-gradient-to-t from-green-500/10 to-transparent opacity-0 transition-opacity group-hover/btn:opacity-100" />
+            <div className="relative">
+              <div className="text-xs font-semibold uppercase tracking-wider text-green-400/70">
+                Yes
+              </div>
+              <div className="mt-1 text-2xl font-black tabular-nums text-green-400">
+                {yesPercent}
+                <span className="text-base font-bold">%</span>
               </div>
             </div>
-          </div>
+            {/* Probability bar at bottom */}
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-green-500/10">
+              <div
+                className="h-full rounded-full bg-green-500/50 transition-all duration-700"
+                style={{ width: `${yesPercent}%` }}
+              />
+            </div>
+          </button>
 
-          {/* NO */}
-          <div className="flex items-center gap-3">
-            <span className="w-8 text-xs font-semibold text-red-400">NO</span>
-            <div className="relative h-8 flex-1 overflow-hidden rounded-lg bg-surface-400">
-              <div
-                className="absolute inset-y-0 left-0 rounded-lg bg-red-500/20 transition-all duration-500"
-                style={{ width: `${market.noPrice * 100}%` }}
-              />
-              <div className="relative flex h-full items-center px-3">
-                <span className="text-sm font-bold text-red-400">
-                  {formatProbability(market.noPrice)}
-                </span>
+          {/* NO button */}
+          <button
+            onClick={(e) => e.preventDefault()}
+            className="group/btn relative flex-1 overflow-hidden rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-center transition-all duration-200 hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+          >
+            <div className="absolute inset-0 bg-gradient-to-t from-red-500/10 to-transparent opacity-0 transition-opacity group-hover/btn:opacity-100" />
+            <div className="relative">
+              <div className="text-xs font-semibold uppercase tracking-wider text-red-400/70">
+                No
+              </div>
+              <div className="mt-1 text-2xl font-black tabular-nums text-red-400">
+                {noPercent}
+                <span className="text-base font-bold">%</span>
               </div>
             </div>
-          </div>
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-red-500/10">
+              <div
+                className="h-full rounded-full bg-red-500/50 transition-all duration-700"
+                style={{ width: `${noPercent}%` }}
+              />
+            </div>
+          </button>
         </div>
       </div>
     </Link>

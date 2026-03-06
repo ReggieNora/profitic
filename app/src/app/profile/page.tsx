@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Position, Market } from "@/types";
-import { formatSol, lamportsToSol, formatProbability } from "@/lib/bondingCurve";
+import { Position } from "@/types";
+import { formatSol, lamportsToSol } from "@/lib/bondingCurve";
 
 // Demo positions for development
 function getDemoPositions(): Position[] {
@@ -107,7 +107,6 @@ export default function ProfilePage() {
   useEffect(() => {
     if (connected) {
       setLoading(true);
-      // In production, fetch from API: GET /api/positions?wallet=...
       setTimeout(() => {
         setPositions(getDemoPositions());
         setLoading(false);
@@ -133,7 +132,6 @@ export default function ProfilePage() {
   );
 
   const handleClaim = async (marketId: string) => {
-    // In production, call the claimWinnings instruction
     alert(
       `Claiming winnings for market ${marketId}.\n\nIn production, this sends a claimWinnings transaction.`
     );
@@ -141,23 +139,25 @@ export default function ProfilePage() {
 
   if (!connected) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6">
-        <svg
-          className="mx-auto mb-4 h-16 w-16 text-gray-600"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      <div className="mx-auto max-w-lg px-4 py-20 text-center animate-fade-up">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-300">
+          <svg
+            className="h-8 w-8 text-gray-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
             strokeWidth={1.5}
-            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-          />
-        </svg>
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
+            />
+          </svg>
+        </div>
         <h1 className="mb-2 text-2xl font-bold text-white">Your Profile</h1>
-        <p className="mb-6 text-gray-400">
-          Connect your wallet to view your positions and winnings.
+        <p className="mb-6 text-sm text-gray-400">
+          Connect your wallet to view positions and winnings.
         </p>
         <WalletMultiButton />
       </div>
@@ -165,27 +165,27 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-5xl sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white">Profile</h1>
-        <p className="mt-1 font-mono text-sm text-gray-500">
+      <div className="mb-6 animate-fade-up">
+        <h1 className="text-2xl font-bold text-white">Profile</h1>
+        <p className="mt-1 font-mono text-xs text-gray-500">
           {publicKey?.toBase58()}
         </p>
       </div>
 
       {/* Stats */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="card text-center">
-          <p className="text-sm text-gray-400">Total Value</p>
-          <p className="mt-1 text-2xl font-bold text-white">
+      <div className="mb-6 grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "60ms" }}>
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
+          <p className="text-[11px] font-medium text-gray-500">Total Value</p>
+          <p className="mt-1 text-lg font-bold text-white">
             {formatSol(lamportsToSol(totalValue))}
           </p>
         </div>
-        <div className="card text-center">
-          <p className="text-sm text-gray-400">Total PnL</p>
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
+          <p className="text-[11px] font-medium text-gray-500">PnL</p>
           <p
-            className={`mt-1 text-2xl font-bold ${
+            className={`mt-1 text-lg font-bold ${
               totalPnl >= 0 ? "text-green-400" : "text-red-400"
             }`}
           >
@@ -193,19 +193,19 @@ export default function ProfilePage() {
             {formatSol(lamportsToSol(totalPnl))}
           </p>
         </div>
-        <div className="card text-center">
-          <p className="text-sm text-gray-400">Claimable</p>
-          <p className="mt-1 text-2xl font-bold text-primary-400">
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
+          <p className="text-[11px] font-medium text-gray-500">Claimable</p>
+          <p className="mt-1 text-lg font-bold text-primary-400">
             {formatSol(lamportsToSol(claimableValue))}
           </p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-1 rounded-lg bg-surface-400 p-1">
+      <div className="mb-5 flex gap-1 rounded-xl bg-surface-400 p-1 animate-fade-up" style={{ animationDelay: "120ms" }}>
         {(
           [
-            { key: "active", label: "Active Positions", count: activePositions.length },
+            { key: "active", label: "Active", count: activePositions.length },
             { key: "claimable", label: "Claimable", count: claimablePositions.length },
             { key: "history", label: "History", count: historyPositions.length },
           ] as const
@@ -213,15 +213,15 @@ export default function ProfilePage() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-colors ${
+            className={`flex-1 rounded-lg py-2.5 text-xs font-semibold transition-all duration-200 active:scale-95 ${
               tab === t.key
-                ? "bg-surface-200 text-white"
+                ? "bg-surface-200 text-white shadow-sm"
                 : "text-gray-400 hover:text-white"
             }`}
           >
             {t.label}
             {t.count > 0 && (
-              <span className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary-600/30 text-xs text-primary-300">
+              <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary-600/30 px-1 text-[10px] text-primary-300">
                 {t.count}
               </span>
             )}
@@ -231,23 +231,27 @@ export default function ProfilePage() {
 
       {/* Content */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+        <div className="space-y-3">
+          <div className="skeleton h-24" />
+          <div className="skeleton h-24" />
+          <div className="skeleton h-24" />
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 stagger-children">
           {tab === "active" &&
             (activePositions.length === 0 ? (
-              <div className="card py-12 text-center text-gray-500">
-                <p className="text-lg font-medium">No active positions</p>
-                <p className="mt-1 text-sm">
-                  Start trading on the{" "}
-                  <Link href="/" className="text-primary-400 hover:underline">
-                    home page
-                  </Link>
-                  .
-                </p>
-              </div>
+              <EmptyState
+                title="No active positions"
+                subtitle={
+                  <>
+                    Start trading on the{" "}
+                    <Link href="/" className="text-primary-400 hover:underline">
+                      home page
+                    </Link>
+                    .
+                  </>
+                }
+              />
             ) : (
               activePositions.map((pos) => (
                 <PositionCard key={pos.marketId} position={pos} />
@@ -256,12 +260,10 @@ export default function ProfilePage() {
 
           {tab === "claimable" &&
             (claimablePositions.length === 0 ? (
-              <div className="card py-12 text-center text-gray-500">
-                <p className="text-lg font-medium">No claimable winnings</p>
-                <p className="mt-1 text-sm">
-                  Winnings appear here after a market you bet on is resolved.
-                </p>
-              </div>
+              <EmptyState
+                title="No claimable winnings"
+                subtitle="Winnings appear here after a market you bet on is resolved."
+              />
             ) : (
               claimablePositions.map((pos) => (
                 <PositionCard
@@ -274,9 +276,7 @@ export default function ProfilePage() {
 
           {tab === "history" &&
             (historyPositions.length === 0 ? (
-              <div className="card py-12 text-center text-gray-500">
-                <p className="text-lg font-medium">No history yet</p>
-              </div>
+              <EmptyState title="No history yet" />
             ) : (
               historyPositions.map((pos) => (
                 <PositionCard key={pos.marketId} position={pos} />
@@ -284,6 +284,21 @@ export default function ProfilePage() {
             ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function EmptyState({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-surface-50/50 bg-surface-300 py-12 text-center">
+      <p className="text-sm font-medium text-gray-400">{title}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500">{subtitle}</p>}
     </div>
   );
 }
@@ -296,40 +311,43 @@ function PositionCard({
   onClaim?: () => void;
 }) {
   return (
-    <div className="card flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex-1">
-        <Link
-          href={`/market/${position.marketId}`}
-          className="font-semibold text-white hover:text-primary-300 transition-colors"
+    <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 transition-all duration-200 active:scale-[0.99]">
+      <Link
+        href={`/market/${position.marketId}`}
+        className="block text-sm font-semibold text-white transition-colors hover:text-primary-300"
+      >
+        {position.market?.question || position.marketId}
+      </Link>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+        <span
+          className={`rounded-lg px-2 py-1 font-bold ${
+            position.outcome === "yes"
+              ? "bg-green-500/15 text-green-400"
+              : "bg-red-500/15 text-red-400"
+          }`}
         >
-          {position.market?.question || position.marketId}
-        </Link>
-        <div className="mt-2 flex flex-wrap gap-3 text-sm">
-          <span
-            className={`font-medium ${
-              position.outcome === "yes" ? "text-green-400" : "text-red-400"
-            }`}
-          >
-            {position.outcome.toUpperCase()}
-          </span>
-          <span className="text-gray-400">
-            {position.shares} shares @ {position.avgPrice.toFixed(2)}
-          </span>
-          <span className="text-gray-400">
-            Value: {formatSol(lamportsToSol(position.currentValue))}
-          </span>
-          <span
-            className={
-              position.pnl >= 0 ? "text-green-400" : "text-red-400"
-            }
-          >
-            {position.pnl >= 0 ? "+" : ""}
-            {formatSol(lamportsToSol(position.pnl))}
-          </span>
-        </div>
+          {position.outcome.toUpperCase()}
+        </span>
+        <span className="text-gray-500">
+          {position.shares} @ {position.avgPrice.toFixed(2)}
+        </span>
+        <span className="text-gray-400 font-medium">
+          {formatSol(lamportsToSol(position.currentValue))}
+        </span>
+        <span
+          className={`font-bold ${
+            position.pnl >= 0 ? "text-green-400" : "text-red-400"
+          }`}
+        >
+          {position.pnl >= 0 ? "+" : ""}
+          {formatSol(lamportsToSol(position.pnl))}
+        </span>
       </div>
       {onClaim && (
-        <button onClick={onClaim} className="btn-primary whitespace-nowrap">
+        <button
+          onClick={onClaim}
+          className="mt-3 w-full rounded-xl bg-gradient-primary py-2.5 text-sm font-bold text-white transition-all active:scale-95"
+        >
           Claim Winnings
         </button>
       )}
