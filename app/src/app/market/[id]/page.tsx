@@ -80,7 +80,7 @@ export default function MarketDetailPage() {
   const noPercent = Math.round(market.noPrice * 100);
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-7xl sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-lg px-4 py-6 pb-24 sm:max-w-7xl sm:px-6 md:pb-6 lg:px-8">
       {/* Back button */}
       <Link
         href="/"

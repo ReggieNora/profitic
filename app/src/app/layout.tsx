@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Image from "next/image";
 import WalletProvider from "@/components/WalletProvider";
 import Navbar from "@/components/Navbar";
 import BottomNav from "@/components/BottomNav";
@@ -38,23 +37,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={inter.className}>
+      <body className={`${inter.className} overflow-hidden`}>
         <WalletProvider>
-          <div className="flex min-h-screen flex-col">
+          <div className="flex h-screen flex-col">
             <Navbar />
-            <main className="flex-1 pb-20 md:pb-0">{children}</main>
-            <footer className="hidden border-t border-surface-50/50 py-6 text-center text-sm text-gray-500 md:block">
-              <div className="flex flex-col items-center gap-3">
-                <Image
-                  src="/logo.png"
-                  alt="Profitic"
-                  width={120}
-                  height={40}
-                  className="h-8 w-auto opacity-60"
-                />
-                <p className="text-gray-600">Decentralized Prediction Markets on Solana</p>
-              </div>
-            </footer>
+            <main className="flex-1 overflow-y-auto">{children}</main>
             <BottomNav />
           </div>
         </WalletProvider>

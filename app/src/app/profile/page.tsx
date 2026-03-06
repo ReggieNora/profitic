@@ -165,7 +165,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-5xl sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-lg px-4 py-6 pb-24 sm:max-w-5xl sm:px-6 md:pb-6 lg:px-8">
       {/* Header */}
       <div className="mb-6 animate-fade-up">
         <h1 className="text-2xl font-bold text-white">Profile</h1>

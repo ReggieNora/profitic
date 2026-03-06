@@ -64,7 +64,7 @@ export default function CreateMarketPage() {
   const minDate = tomorrow.toISOString().split("T")[0];
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-2xl sm:px-6">
+    <div className="mx-auto max-w-lg px-4 py-6 pb-24 sm:max-w-2xl sm:px-6 md:pb-6">
       <div className="mb-6 animate-fade-up">
         <h1 className="text-2xl font-bold text-white">Create Market</h1>
         <p className="mt-1 text-sm text-gray-400">
