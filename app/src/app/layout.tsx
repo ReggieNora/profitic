@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import WalletProvider from "@/components/WalletProvider";
 import Navbar from "@/components/Navbar";
 import BottomNav from "@/components/BottomNav";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Profitic - Solana Prediction Market",
@@ -37,7 +34,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} overflow-hidden`}>
+      <body className="overflow-hidden">
         <WalletProvider>
           <div className="flex h-screen flex-col">
             <Navbar />

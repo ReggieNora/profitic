@@ -105,15 +105,16 @@ export default function AdminPage() {
     field: string,
     value: string
   ) => {
-    setResolveForm((prev) => ({
-      ...prev,
-      [marketId]: {
-        outcome: "yes",
-        evidenceUrl: "",
-        ...prev[marketId],
-        [field]: value,
-      },
-    }));
+    setResolveForm((prev) => {
+      const existing = prev[marketId] || { outcome: "yes" as const, evidenceUrl: "" };
+      return {
+        ...prev,
+        [marketId]: {
+          ...existing,
+          [field]: value,
+        },
+      };
+    });
   };
 
   if (!connected) {
