@@ -92,11 +92,11 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
     <div
       ref={backdropRef}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-fade-in md:items-center md:p-6"
     >
-      <div className="absolute bottom-0 left-0 right-0 flex max-h-[85vh] flex-col rounded-t-3xl border-t border-white/10 bg-surface-400/95 backdrop-blur-xl animate-slide-up">
-        {/* Handle */}
-        <div className="flex items-center justify-center pt-3 pb-1">
+      <div className="flex max-h-[85vh] w-full flex-col rounded-t-3xl border-t border-white/10 bg-surface-400/95 backdrop-blur-xl animate-slide-up md:max-w-md md:rounded-3xl md:border md:shadow-2xl md:shadow-black/50">
+        {/* Handle — mobile only */}
+        <div className="flex items-center justify-center pt-3 pb-1 md:hidden">
           <div className="h-1 w-10 rounded-full bg-white/20" />
         </div>
 
@@ -209,7 +209,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
         )}
 
         {/* Submit area */}
-        <div className="px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        <div className="px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-5">
           {connected ? (
             <button
               onClick={handleSubmit}
