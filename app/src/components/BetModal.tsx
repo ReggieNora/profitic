@@ -101,7 +101,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pb-3">
+        <div className="flex items-center justify-between px-5 pb-3 md:pt-5">
           <div className="flex items-center gap-3">
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-full ${
