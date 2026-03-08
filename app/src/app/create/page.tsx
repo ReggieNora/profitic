@@ -4,29 +4,45 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { MarketFormData } from "@/types";
+import { MarketFormData, MarketCategory } from "@/types";
+import { MARKET_CATEGORIES } from "@/lib/constants";
+
+const CATEGORY_OPTIONS = MARKET_CATEGORIES.filter((c) => c.value !== "all") as readonly { label: string; value: string }[];
 
 export default function CreateMarketPage() {
   const router = useRouter();
   const { connected, publicKey } = useWallet();
   const [loading, setLoading] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [form, setForm] = useState<MarketFormData>({
     question: "",
     description: "",
+    category: "",
     resolutionDate: "",
     resolutionTime: "12:00",
     dataSourceUrl: "",
+    coverImage: "",
+    videoUrl: "",
   });
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setImagePreview(url);
+    setForm((prev) => ({ ...prev, coverImage: url }));
   };
 
   const isValid =
     form.question.trim().length >= 10 &&
     form.description.trim().length >= 20 &&
+    form.category !== "" &&
     form.resolutionDate &&
     form.dataSourceUrl.trim().startsWith("http");
 
@@ -143,6 +159,112 @@ export default function CreateMarketPage() {
               </p>
             </div>
 
+            {/* Category */}
+            <div>
+              <label
+                htmlFor="category"
+                className="mb-1.5 block text-xs font-semibold text-gray-400"
+              >
+                Category <span className="text-red-400">*</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORY_OPTIONS.map((cat) => (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, category: cat.value as MarketCategory }))}
+                    className={`rounded-full px-4 py-2 text-xs font-semibold transition-all active:scale-95 ${
+                      form.category === cat.value
+                        ? "bg-white text-black shadow-lg"
+                        : "bg-white/10 text-white/70 hover:bg-white/20"
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Media section */}
+          <div className="space-y-4 rounded-2xl border border-surface-50/50 bg-surface-300 p-5">
+            <p className="text-xs font-semibold text-gray-400">Media</p>
+
+            {/* Cover Image */}
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-400">
+                Cover Image
+              </label>
+              {imagePreview || form.coverImage ? (
+                <div className="relative mb-2 overflow-hidden rounded-xl">
+                  <img
+                    src={imagePreview || form.coverImage}
+                    alt="Cover preview"
+                    className="h-40 w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setImagePreview(null); setForm((prev) => ({ ...prev, coverImage: "" })); }}
+                    className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white backdrop-blur-sm hover:bg-black/80"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-surface-50/50 py-8 text-sm text-gray-500 transition-colors hover:border-primary-500/40 hover:text-gray-300">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                    </svg>
+                    Upload image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageFile}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
+              <div className="mt-2">
+                <input
+                  name="coverImage"
+                  type="url"
+                  value={imagePreview ? "" : form.coverImage}
+                  onChange={handleChange}
+                  placeholder="Or paste an image URL..."
+                  className="input-field text-xs"
+                  disabled={!!imagePreview}
+                />
+              </div>
+            </div>
+
+            {/* Video URL */}
+            <div>
+              <label
+                htmlFor="videoUrl"
+                className="mb-1.5 block text-xs font-semibold text-gray-400"
+              >
+                Video URL <span className="text-gray-600">(optional)</span>
+              </label>
+              <input
+                id="videoUrl"
+                name="videoUrl"
+                type="url"
+                value={form.videoUrl}
+                onChange={handleChange}
+                placeholder="https://youtube.com/watch?v=... or https://x.com/..."
+                className="input-field"
+              />
+              <p className="mt-1 text-[11px] text-gray-600">
+                YouTube or X/Twitter video link. Plays inline on the card.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4 rounded-2xl border border-surface-50/50 bg-surface-300 p-5">
             {/* Resolution Date + Time */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -205,26 +327,50 @@ export default function CreateMarketPage() {
 
           {/* Preview */}
           {form.question && (
-            <div className="rounded-2xl border border-primary-500/20 bg-primary-500/5 p-5 animate-fade-in">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                Preview
-              </p>
-              <p className="text-base font-bold text-white">
-                {form.question}
-              </p>
-              {form.description && (
-                <p className="mt-2 text-xs text-gray-400 leading-relaxed">
-                  {form.description}
-                </p>
+            <div className="relative overflow-hidden rounded-2xl border border-primary-500/20 bg-primary-500/5 animate-fade-in">
+              {(imagePreview || form.coverImage) && (
+                <img
+                  src={imagePreview || form.coverImage}
+                  alt=""
+                  className="h-32 w-full object-cover opacity-40"
+                />
               )}
-              {form.resolutionDate && (
-                <p className="mt-2 text-[11px] text-gray-500">
-                  Resolves:{" "}
-                  {new Date(
-                    `${form.resolutionDate}T${form.resolutionTime}`
-                  ).toLocaleString()}
+              <div className="p-5">
+                <div className="mb-2 flex items-center gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                    Preview
+                  </p>
+                  {form.category && (
+                    <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase text-white/60">
+                      {form.category}
+                    </span>
+                  )}
+                </div>
+                <p className="text-base font-bold text-white">
+                  {form.question}
                 </p>
-              )}
+                {form.description && (
+                  <p className="mt-2 text-xs text-gray-400 leading-relaxed">
+                    {form.description}
+                  </p>
+                )}
+                {form.resolutionDate && (
+                  <p className="mt-2 text-[11px] text-gray-500">
+                    Resolves:{" "}
+                    {new Date(
+                      `${form.resolutionDate}T${form.resolutionTime}`
+                    ).toLocaleString()}
+                  </p>
+                )}
+                {form.videoUrl && (
+                  <p className="mt-2 flex items-center gap-1 text-[11px] text-primary-400">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                    </svg>
+                    Video attached
+                  </p>
+                )}
+              </div>
             </div>
           )}
 

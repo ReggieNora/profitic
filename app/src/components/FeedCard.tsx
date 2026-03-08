@@ -115,6 +115,44 @@ function CryptoBackground({ symbol }: { symbol?: string }) {
   return null;
 }
 
+function getYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([^&?\s]+)/);
+  return m ? m[1] : null;
+}
+
+function VideoEmbed({ url }: { url: string }) {
+  const ytId = getYouTubeId(url);
+  if (ytId) {
+    return (
+      <div className="mb-6 w-full max-w-sm overflow-hidden rounded-xl shadow-lg">
+        <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+          <iframe
+            className="absolute inset-0 h-full w-full"
+            src={`https://www.youtube.com/embed/${ytId}?rel=0`}
+            title="Video"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      </div>
+    );
+  }
+  // Fallback: link to video
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mb-6 flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm text-white/70 backdrop-blur-sm transition-colors hover:bg-white/20"
+    >
+      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+      </svg>
+      Watch video
+    </a>
+  );
+}
+
 interface FeedCardProps {
   market: Market;
   index: number;
@@ -189,8 +227,16 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
     >
       {/* Background visual elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Large crypto SVG icon */}
-        {visual.svg ? (
+        {market.coverImage ? (
+          <>
+            <img
+              src={market.coverImage}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80" />
+          </>
+        ) : visual.svg ? (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[420px] w-[420px] text-white/[0.07] sm:h-[520px] sm:w-[520px]">
             <CryptoBackground symbol={visual.svg} />
           </div>
@@ -302,6 +348,11 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
         <p className="mb-6 max-w-md text-center text-sm leading-relaxed text-white/50 line-clamp-2">
           {market.description}
         </p>
+
+        {/* Inline video */}
+        {market.videoUrl && (
+          <VideoEmbed url={market.videoUrl} />
+        )}
 
         {/* Volume indicator */}
         <div className="mb-6 flex items-center gap-3 rounded-2xl bg-white/5 px-4 py-2 backdrop-blur-sm">

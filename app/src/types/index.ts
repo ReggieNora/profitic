@@ -7,6 +7,8 @@ export interface Market {
   description: string;
   creator: string;
   category?: MarketCategory;
+  coverImage?: string; // URL to cover image
+  videoUrl?: string; // Optional YouTube/Twitter video URL
   resolutionDate: number; // Unix timestamp
   dataSourceUrl: string;
   outcome: MarketOutcome;
@@ -52,9 +54,12 @@ export interface Position {
 export interface MarketFormData {
   question: string;
   description: string;
+  category: MarketCategory | "";
   resolutionDate: string;
   resolutionTime: string;
   dataSourceUrl: string;
+  coverImage: string;
+  videoUrl: string;
 }
 
 export interface TradeFormData {
