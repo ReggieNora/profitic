@@ -45,7 +45,7 @@ export default function HomePage() {
     <div className="relative -mt-14 h-screen w-full overflow-hidden bg-transparent">
       {/* Search overlay */}
       {showSearch && (
-        <div className="absolute inset-x-0 top-14 z-30 bg-surface-500/95 backdrop-blur-xl animate-slide-down">
+        <div className="absolute inset-x-0 top-14 z-30 bg-white/[0.03] backdrop-blur-2xl backdrop-saturate-150 border-b border-white/10 animate-slide-down">
           <div className="p-4">
             <div className="relative mb-3">
               <svg
