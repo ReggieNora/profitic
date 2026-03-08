@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Market } from "@/types";
 import { formatSol, lamportsToSol } from "@/lib/bondingCurve";
 import CommentSheet from "@/components/CommentSheet";
+import BetModal from "@/components/BetModal";
 
 // --- Utilities ---
 
@@ -88,6 +89,7 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
   const [showHeartAnim, setShowHeartAnim] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [shared, setShared] = useState(false);
+  const [betSide, setBetSide] = useState<"yes" | "no" | null>(null);
 
   const yesPercent = Math.round(market.yesPrice * 100);
   const noPercent = Math.round(market.noPrice * 100);
@@ -259,20 +261,18 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
 
         {/* YES / NO action buttons */}
         <div className="flex w-full max-w-sm gap-3">
-          <Link
-            href={`/market/${market.id}?side=yes`}
-            onClick={(e) => e.stopPropagation()}
+          <button
+            onClick={(e) => { e.stopPropagation(); setBetSide("yes"); }}
             className="flex-1 rounded-2xl bg-green-500 py-4 text-center text-lg font-black uppercase tracking-wide text-white shadow-lg shadow-green-500/25 transition-all duration-200 hover:bg-green-400 hover:shadow-xl hover:shadow-green-500/30 active:scale-95"
           >
             YES
-          </Link>
-          <Link
-            href={`/market/${market.id}?side=no`}
-            onClick={(e) => e.stopPropagation()}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setBetSide("no"); }}
             className="flex-1 rounded-2xl bg-red-500 py-4 text-center text-lg font-black uppercase tracking-wide text-white shadow-lg shadow-red-500/25 transition-all duration-200 hover:bg-red-400 hover:shadow-xl hover:shadow-red-500/30 active:scale-95"
           >
             NO
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -405,6 +405,16 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
         open={showComments}
         onClose={() => setShowComments(false)}
       />
+
+      {/* Bet modal */}
+      {betSide && (
+        <BetModal
+          market={market}
+          side={betSide}
+          open={true}
+          onClose={() => setBetSide(null)}
+        />
+      )}
     </div>
   );
 }
