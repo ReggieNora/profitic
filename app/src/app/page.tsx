@@ -42,7 +42,7 @@ export default function HomePage() {
   }, [handleScroll]);
 
   return (
-    <div className="relative h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-surface-500 md:h-[calc(100vh-3.5rem)]">
+    <div className="relative h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-transparent md:h-[calc(100vh-3.5rem)]">
       {/* Search overlay */}
       {showSearch && (
         <div className="absolute inset-x-0 top-0 z-30 bg-surface-500/95 backdrop-blur-xl animate-slide-down">

@@ -15,7 +15,7 @@ export default function Navbar() {
     publicKey && ADMIN_WALLETS.includes(publicKey.toBase58());
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-white/5 bg-black/40 backdrop-blur-xl backdrop-saturate-150">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-white/[0.03] backdrop-blur-2xl backdrop-saturate-150">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link href="/" className="flex items-center transition-opacity active:opacity-70">

@@ -38,7 +38,7 @@ export default function RootLayout({
         <WalletProvider>
           <div className="flex h-screen flex-col">
             <Navbar />
-            <main className="flex-1 overflow-y-auto">{children}</main>
+            <main className="flex-1 overflow-y-auto pt-14">{children}</main>
             <BottomNav />
           </div>
         </WalletProvider>
