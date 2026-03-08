@@ -38,16 +38,16 @@ function shortenAddress(addr: string): string {
   return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
 }
 
-function getMarketVisual(question: string, id: string): { gradient: string; icon: string; category: string } {
+function getMarketVisual(question: string, id: string): { gradient: string; icon: string; category: string; svg?: string } {
   const q = question.toLowerCase();
   if (q.includes("bitcoin") || q.includes("btc")) {
-    return { gradient: "from-orange-600/50 via-amber-900/40 to-surface-500", icon: "BTC", category: "Crypto" };
+    return { gradient: "from-orange-600/50 via-amber-900/40 to-surface-500", icon: "BTC", category: "Crypto", svg: "bitcoin" };
   }
   if (q.includes("ethereum") || q.includes("eth")) {
-    return { gradient: "from-indigo-600/50 via-purple-900/40 to-surface-500", icon: "ETH", category: "Crypto" };
+    return { gradient: "from-indigo-600/50 via-purple-900/40 to-surface-500", icon: "ETH", category: "Crypto", svg: "ethereum" };
   }
   if (q.includes("solana") || q.includes("sol")) {
-    return { gradient: "from-emerald-600/40 via-teal-900/40 to-surface-500", icon: "SOL", category: "Crypto" };
+    return { gradient: "from-emerald-600/40 via-teal-900/40 to-surface-500", icon: "SOL", category: "Crypto", svg: "solana" };
   }
   if (q.includes("etf") || q.includes("sec") || q.includes("regulation")) {
     return { gradient: "from-blue-600/40 via-sky-900/30 to-surface-500", icon: "REG", category: "Regulation" };
@@ -72,6 +72,58 @@ function getMarketVisual(question: string, id: string): { gradient: string; icon
   ];
   const hash = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return { gradient: gradients[hash % gradients.length], icon: "MKT", category: "Market" };
+}
+
+function CryptoBackground({ symbol }: { symbol?: string }) {
+  if (!symbol) return null;
+
+  if (symbol === "bitcoin") {
+    return (
+      <svg viewBox="0 0 64 64" fill="none" className="h-full w-full">
+        <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
+        <path
+          d="M25 18v28M29 18v28M25 18h10c4.4 0 8 3.6 8 7s-3.6 7-8 7H25m0 0h11c4.4 0 8 3.6 8 7s-3.6 7-8 7H25M22 18h3M22 46h3M22 32h3"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.6"
+        />
+        <line x1="27" y1="14" x2="27" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.4" />
+        <line x1="33" y1="14" x2="33" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.4" />
+        <line x1="27" y1="46" x2="27" y2="50" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.4" />
+        <line x1="33" y1="46" x2="33" y2="50" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.4" />
+      </svg>
+    );
+  }
+
+  if (symbol === "ethereum") {
+    return (
+      <svg viewBox="0 0 64 64" fill="none" className="h-full w-full">
+        <path d="M32 6L14 32l18 10.5L50 32 32 6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" opacity="0.5" />
+        <path d="M14 36l18 22 18-22-18 10.5L14 36z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" opacity="0.4" />
+        <path d="M32 6v36.5M14 32l18 10.5L50 32" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" opacity="0.2" />
+      </svg>
+    );
+  }
+
+  if (symbol === "solana") {
+    return (
+      <svg viewBox="0 0 64 64" fill="none" className="h-full w-full">
+        <path
+          d="M12 42h32l8-8H20l-8 8zM12 22h32l8 8H20l-8-8zM52 32H20l-8 0h40l0 0z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.5"
+        />
+        <path d="M12 42l8-8M44 42l8-8M12 22l8 8M44 22l8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.3" />
+      </svg>
+    );
+  }
+
+  return null;
 }
 
 interface FeedCardProps {
@@ -148,13 +200,21 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
     >
       {/* Background visual elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 flex items-center justify-center">
-          <span className="text-[120px] font-black text-white/[0.03] select-none sm:text-[160px]">
-            {visual.icon}
-          </span>
-        </div>
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 h-64 w-64 rounded-full bg-primary-500/5 blur-3xl" />
-        <div className="absolute bottom-1/3 right-0 h-48 w-48 rounded-full bg-accent-500/5 blur-3xl" />
+        {/* Large crypto SVG icon */}
+        {visual.svg ? (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[420px] w-[420px] text-white/[0.07] sm:h-[520px] sm:w-[520px]">
+            <CryptoBackground symbol={visual.svg} />
+          </div>
+        ) : (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[45%] flex items-center justify-center">
+            <span className="text-[180px] font-black text-white/[0.04] select-none sm:text-[240px]">
+              {visual.icon}
+            </span>
+          </div>
+        )}
+        {/* Glow effects */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-primary-500/[0.07] blur-3xl" />
+        <div className="absolute bottom-1/3 right-0 h-56 w-56 rounded-full bg-accent-500/[0.06] blur-3xl" />
       </div>
 
       {/* Double-tap heart animation */}
