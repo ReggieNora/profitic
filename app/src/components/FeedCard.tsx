@@ -252,10 +252,12 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
         {/* Big probability display */}
         <div className="mb-6 flex items-baseline gap-1 tabular-nums">
           <span className="text-7xl font-black text-white sm:text-8xl">
-            {yesPercent}
+            {yesPercent >= noPercent ? yesPercent : noPercent}
           </span>
           <span className="text-3xl font-bold text-white/50 sm:text-4xl">%</span>
-          <span className="ml-2 text-lg font-semibold text-green-400 sm:text-xl">YES</span>
+          <span className={`ml-2 text-lg font-semibold sm:text-xl ${yesPercent >= noPercent ? "text-green-400" : "text-red-400"}`}>
+            {yesPercent >= noPercent ? "YES" : "NO"}
+          </span>
         </div>
 
         {/* Animated probability bar */}
