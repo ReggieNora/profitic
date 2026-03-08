@@ -1,9 +1,12 @@
+export type MarketCategory = "crypto" | "finance" | "politics" | "world" | "tech" | "sports";
+
 export interface Market {
   id: string;
   publicKey: string;
   question: string;
   description: string;
   creator: string;
+  category?: MarketCategory;
   resolutionDate: number; // Unix timestamp
   dataSourceUrl: string;
   outcome: MarketOutcome;

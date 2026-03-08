@@ -17,12 +17,17 @@ export const ADMIN_WALLETS = [
   "YourAdminWalletPublicKeyHere11111111111111111",
 ];
 
-export const MARKET_FILTERS = [
+export const MARKET_CATEGORIES = [
   { label: "All", value: "all" },
-  { label: "Active", value: "active" },
-  { label: "Ending Soon", value: "ending_soon" },
-  { label: "High Volume", value: "high_volume" },
-  { label: "Resolved", value: "resolved" },
+  { label: "Crypto", value: "crypto" },
+  { label: "Finance", value: "finance" },
+  { label: "Politics", value: "politics" },
+  { label: "World Events", value: "world" },
+  { label: "Tech", value: "tech" },
+  { label: "Sports", value: "sports" },
 ] as const;
+
+/** @deprecated Use MARKET_CATEGORIES instead */
+export const MARKET_FILTERS = MARKET_CATEGORIES;
 
 export const BONDING_CURVE_K = 100; // Bonding curve constant

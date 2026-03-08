@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import FeedCard from "@/components/FeedCard";
 import { useMarkets } from "@/hooks/useMarkets";
-import { MARKET_FILTERS } from "@/lib/constants";
+import { MARKET_CATEGORIES } from "@/lib/constants";
 
 export default function HomePage() {
   const [search, setSearch] = useState("");
@@ -12,17 +12,23 @@ export default function HomePage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const feedRef = useRef<HTMLDivElement>(null);
 
-  const { markets, loading, error } = useMarkets({ filter, search });
+  const { markets, loading, error } = useMarkets({ search });
 
   const filteredMarkets = useMemo(() => {
-    if (!search.trim()) return markets;
-    const q = search.toLowerCase();
-    return markets.filter(
-      (m) =>
-        m.question.toLowerCase().includes(q) ||
-        m.description.toLowerCase().includes(q)
-    );
-  }, [markets, search]);
+    let result = markets;
+    if (filter !== "all") {
+      result = result.filter((m) => m.category === filter);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (m) =>
+          m.question.toLowerCase().includes(q) ||
+          m.description.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [markets, filter, search]);
 
   // Track which card is currently in view
   const handleScroll = useCallback(() => {
@@ -75,7 +81,7 @@ export default function HomePage() {
             </div>
             {/* Filter pills */}
             <div className="feed-scroll flex gap-2 overflow-x-auto pb-2">
-              {MARKET_FILTERS.map((f) => (
+              {MARKET_CATEGORIES.map((f) => (
                 <button
                   key={f.value}
                   onClick={() => setFilter(f.value)}
@@ -93,40 +99,28 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Top overlay controls */}
-      <div className="absolute left-0 right-0 top-14 z-20 flex items-center justify-between px-4 py-3">
-        {/* Filter tabs */}
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => { setFilter("all"); setSearch(""); }}
-            className={`text-sm font-bold transition-all ${
-              filter === "all" && !search ? "text-white" : "text-white/50"
-            }`}
-          >
-            For You
-          </button>
-          <button
-            onClick={() => setFilter("active")}
-            className={`text-sm font-bold transition-all ${
-              filter === "active" ? "text-white" : "text-white/50"
-            }`}
-          >
-            Active
-          </button>
-          <button
-            onClick={() => setFilter("high_volume")}
-            className={`text-sm font-bold transition-all ${
-              filter === "high_volume" ? "text-white" : "text-white/50"
-            }`}
-          >
-            Trending
-          </button>
+      {/* Top overlay controls — category tabs */}
+      <div className="absolute left-0 right-0 top-14 z-20 flex items-center gap-2 px-3 py-3">
+        <div className="feed-scroll flex flex-1 items-center gap-2 overflow-x-auto">
+          {MARKET_CATEGORIES.map((cat) => (
+            <button
+              key={cat.value}
+              onClick={() => { setFilter(cat.value); setSearch(""); }}
+              className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
+                filter === cat.value
+                  ? "bg-white text-black shadow-lg"
+                  : "bg-white/10 text-white/70 backdrop-blur-sm hover:bg-white/20"
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
         </div>
 
         {/* Search button */}
         <button
           onClick={() => setShowSearch(true)}
-          className="rounded-full p-2 text-white/70 transition-all hover:text-white active:scale-90"
+          className="shrink-0 rounded-full p-2 text-white/70 transition-all hover:text-white active:scale-90"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
