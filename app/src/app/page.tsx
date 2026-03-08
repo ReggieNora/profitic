@@ -42,10 +42,10 @@ export default function HomePage() {
   }, [handleScroll]);
 
   return (
-    <div className="relative h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-transparent md:h-[calc(100vh-3.5rem)]">
+    <div className="relative -mt-14 h-screen w-full overflow-hidden bg-transparent">
       {/* Search overlay */}
       {showSearch && (
-        <div className="absolute inset-x-0 top-0 z-30 bg-surface-500/95 backdrop-blur-xl animate-slide-down">
+        <div className="absolute inset-x-0 top-14 z-30 bg-surface-500/95 backdrop-blur-xl animate-slide-down">
           <div className="p-4">
             <div className="relative mb-3">
               <svg
@@ -94,7 +94,7 @@ export default function HomePage() {
       )}
 
       {/* Top overlay controls */}
-      <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-4 py-3">
+      <div className="absolute left-0 right-0 top-14 z-20 flex items-center justify-between px-4 py-3">
         {/* Filter tabs */}
         <div className="flex items-center gap-4">
           <button
@@ -146,7 +146,7 @@ export default function HomePage() {
 
       {/* Error banner */}
       {error && !loading && markets.length > 0 && (
-        <div className="absolute left-4 right-4 top-14 z-20 rounded-xl bg-yellow-500/10 px-4 py-2 text-center text-xs text-yellow-400 backdrop-blur-sm">
+        <div className="absolute left-4 right-4 top-28 z-20 rounded-xl bg-yellow-500/10 px-4 py-2 text-center text-xs text-yellow-400 backdrop-blur-sm">
           Demo mode &mdash; using sample data
         </div>
       )}
