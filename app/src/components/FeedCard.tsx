@@ -261,14 +261,29 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
         {/* Animated probability bar */}
         <div className="mb-6 w-full max-w-sm">
           <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-white/10">
-            <div
-              className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-green-400 to-green-500 transition-all duration-1000"
-              style={{ width: `${yesPercent}%` }}
-            />
-            <div
-              className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-bar-shimmer"
-              style={{ width: `${yesPercent}%` }}
-            />
+            {yesPercent >= noPercent ? (
+              <>
+                <div
+                  className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-green-400 to-green-500 transition-all duration-1000"
+                  style={{ width: `${yesPercent}%` }}
+                />
+                <div
+                  className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-bar-shimmer"
+                  style={{ width: `${yesPercent}%` }}
+                />
+              </>
+            ) : (
+              <>
+                <div
+                  className="absolute right-0 top-0 h-full rounded-full bg-gradient-to-l from-red-400 to-red-500 transition-all duration-1000"
+                  style={{ width: `${noPercent}%` }}
+                />
+                <div
+                  className="absolute right-0 top-0 h-full rounded-full bg-gradient-to-l from-transparent via-white/10 to-transparent animate-bar-shimmer"
+                  style={{ width: `${noPercent}%` }}
+                />
+              </>
+            )}
           </div>
           <div className="mt-2 flex justify-between text-xs font-medium">
             <span className="text-green-400">Yes {yesPercent}%</span>
