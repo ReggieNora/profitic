@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Market } from "@/types";
+import { getAutoCoverImage } from "@/lib/coverImages";
 import { formatSol, lamportsToSol } from "@/lib/bondingCurve";
 import CommentSheet from "@/components/CommentSheet";
 import BetModal from "@/components/BetModal";
@@ -176,6 +177,7 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
   const volume = formatSol(lamportsToSol(market.totalVolume));
   const isHot = lamportsToSol(market.totalVolume) > 30;
   const visual = getMarketVisual(market.question, market.id);
+  const coverImage = market.coverImage || getAutoCoverImage(market.question, market.category);
 
   const [lastTap, setLastTap] = useState(0);
   const handleDoubleTap = useCallback(() => {
@@ -227,29 +229,20 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
     >
       {/* Background visual elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {market.coverImage ? (
-          <>
-            <img
-              src={market.coverImage}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80" />
-          </>
-        ) : visual.svg ? (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[420px] w-[420px] text-white/[0.07] sm:h-[520px] sm:w-[520px]">
+        {/* Cover image background */}
+        <img
+          src={coverImage}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/40 to-black/75" />
+
+        {/* Crypto SVG overlay for crypto markets */}
+        {visual.svg && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[420px] w-[420px] text-white/[0.08] sm:h-[520px] sm:w-[520px]">
             <CryptoBackground symbol={visual.svg} />
           </div>
-        ) : (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[45%] flex items-center justify-center">
-            <span className="text-[180px] font-black text-white/[0.04] select-none sm:text-[240px]">
-              {visual.icon}
-            </span>
-          </div>
         )}
-        {/* Glow effects */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-primary-500/[0.07] blur-3xl" />
-        <div className="absolute bottom-1/3 right-0 h-56 w-56 rounded-full bg-accent-500/[0.06] blur-3xl" />
       </div>
 
       {/* Double-tap heart animation */}
