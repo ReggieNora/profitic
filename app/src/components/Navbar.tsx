@@ -11,17 +11,11 @@ import { ADMIN_WALLETS } from "@/lib/constants";
 export default function Navbar() {
   const pathname = usePathname();
   const { publicKey } = useWallet();
-  const isFeed = pathname === "/";
-
   const isAdmin =
     publicKey && ADMIN_WALLETS.includes(publicKey.toBase58());
 
   return (
-    <nav className={`sticky top-0 z-50 border-b transition-colors ${
-      isFeed
-        ? "border-transparent bg-transparent"
-        : "border-white/5 bg-surface-500/80 backdrop-blur-xl"
-    }`}>
+    <nav className="sticky top-0 z-50 border-b border-white/5 bg-black/40 backdrop-blur-xl backdrop-saturate-150">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link href="/" className="flex items-center transition-opacity active:opacity-70">
@@ -51,9 +45,7 @@ export default function Navbar() {
                 className={`relative rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 ${
                   isActive
                     ? "text-white"
-                    : isFeed
-                    ? "text-white/50 hover:text-white"
-                    : "text-gray-400 hover:text-white"
+                    : "text-white/50 hover:text-white"
                 }`}
               >
                 {link.label}
