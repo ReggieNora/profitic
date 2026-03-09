@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Market } from "@/types";
+import { Market, CRYPTO_ASSETS, CRYPTO_TIMEFRAMES } from "@/types";
 import { getAutoCoverImage } from "@/lib/coverImages";
 import { formatSol, lamportsToSol } from "@/lib/bondingCurve";
 import CommentSheet from "@/components/CommentSheet";
@@ -265,9 +265,30 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-32 pt-16 sm:px-16 sm:pb-36 md:pr-24">
         {/* Category + status badges */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white/60 backdrop-blur-sm">
-            {visual.category}
-          </span>
+          {market.marketType === "crypto_updown" ? (
+            <>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-400 backdrop-blur-sm">
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+                </svg>
+                Crypto Up/Down
+              </span>
+              {market.cryptoAsset && (
+                <span className={`rounded-full bg-white/10 px-3 py-1 text-[10px] font-bold backdrop-blur-sm ${CRYPTO_ASSETS.find(a => a.value === market.cryptoAsset)?.color || "text-white/60"}`}>
+                  {market.cryptoAsset}
+                </span>
+              )}
+              {market.cryptoTimeframe && (
+                <span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-semibold text-white/50 backdrop-blur-sm">
+                  {CRYPTO_TIMEFRAMES.find(t => t.value === market.cryptoTimeframe)?.label || market.cryptoTimeframe}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white/60 backdrop-blur-sm">
+              {visual.category}
+            </span>
+          )}
           {isHot && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-500/20 px-3 py-1.5 text-xs font-bold text-orange-400 backdrop-blur-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse" />
@@ -341,9 +362,38 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
         </h2>
 
         {/* Description */}
-        <p className="mb-6 max-w-md text-center text-sm leading-relaxed text-white/50 line-clamp-2">
+        <p className="mb-4 max-w-md text-center text-sm leading-relaxed text-white/50 line-clamp-2">
           {market.description}
         </p>
+
+        {/* Crypto Up/Down price info */}
+        {market.marketType === "crypto_updown" && market.startPrice && (
+          <div className="mb-6 flex items-center gap-4 rounded-2xl bg-white/5 px-5 py-3 backdrop-blur-sm">
+            <div className="text-center">
+              <p className="text-[10px] font-semibold uppercase text-gray-500">Start</p>
+              <p className="text-sm font-bold tabular-nums text-white">
+                ${market.startPrice.toLocaleString()}
+              </p>
+            </div>
+            {market.strikePrice && (
+              <>
+                <svg className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+                <div className="text-center">
+                  <p className="text-[10px] font-semibold uppercase text-amber-500">Target</p>
+                  <p className="text-sm font-bold tabular-nums text-amber-400">
+                    ${market.strikePrice.toLocaleString()}
+                  </p>
+                </div>
+              </>
+            )}
+            <div className="ml-auto flex items-center gap-1 rounded-full bg-primary-500/10 px-2 py-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary-400" />
+              <span className="text-[9px] font-bold text-primary-400">{market.oracleSource || "Pyth"}</span>
+            </div>
+          </div>
+        )}
 
         {/* Inline video */}
         {market.videoUrl && (
@@ -377,19 +427,33 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
           </span>
         </div>
 
-        {/* YES / NO action buttons */}
+        {/* YES / NO (or UP / DOWN) action buttons */}
         <div className="flex w-full max-w-sm gap-3">
           <button
             onClick={(e) => { e.stopPropagation(); setBetSide("yes"); }}
             className="flex-1 rounded-2xl bg-green-500 py-4 text-center text-lg font-black uppercase tracking-wide text-white shadow-lg shadow-green-500/25 transition-all duration-200 hover:bg-green-400 hover:shadow-xl hover:shadow-green-500/30 active:scale-95"
           >
-            YES
+            {market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down" ? (
+              <span className="flex items-center justify-center gap-1.5">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                </svg>
+                UP
+              </span>
+            ) : "YES"}
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); setBetSide("no"); }}
             className="flex-1 rounded-2xl bg-red-500 py-4 text-center text-lg font-black uppercase tracking-wide text-white shadow-lg shadow-red-500/25 transition-all duration-200 hover:bg-red-400 hover:shadow-xl hover:shadow-red-500/30 active:scale-95"
           >
-            NO
+            {market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down" ? (
+              <span className="flex items-center justify-center gap-1.5">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                </svg>
+                DOWN
+              </span>
+            ) : "NO"}
           </button>
         </div>
       </div>

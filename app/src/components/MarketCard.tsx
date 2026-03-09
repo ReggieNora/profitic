@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Market } from "@/types";
+import { Market, CRYPTO_ASSETS, CRYPTO_TIMEFRAMES } from "@/types";
 import { formatProbability, formatSol, lamportsToSol } from "@/lib/bondingCurve";
 
 function timeRemaining(resolutionDate: number): string {
@@ -26,12 +26,16 @@ interface MarketCardProps {
 }
 
 export default function MarketCard({ market, featured }: MarketCardProps) {
+  const isCrypto = market.marketType === "crypto_updown";
   const isResolved = market.resolved;
   const timeLeft = timeRemaining(market.resolutionDate);
   const volume = formatSol(lamportsToSol(market.totalVolume));
   const yesPercent = Math.round(market.yesPrice * 100);
   const noPercent = Math.round(market.noPrice * 100);
   const isHot = lamportsToSol(market.totalVolume) > 30;
+  const isUpDown = market.cryptoSubtype === "up_down";
+
+  const cryptoAsset = CRYPTO_ASSETS.find((a) => a.value === market.cryptoAsset);
 
   return (
     <Link href={`/market/${market.id}`} className="block">
@@ -49,7 +53,15 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
 
         {/* Top row: badges */}
         <div className="relative mb-4 flex items-center gap-2">
-          {isHot && !isResolved && (
+          {isCrypto && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-400">
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+              </svg>
+              {market.cryptoAsset}
+            </span>
+          )}
+          {isHot && !isResolved && !isCrypto && (
             <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-orange-400">
               <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse" />
               Hot
@@ -94,7 +106,7 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
             <div className="absolute inset-0 bg-gradient-to-t from-green-500/10 to-transparent opacity-0 transition-opacity group-hover/btn:opacity-100" />
             <div className="relative">
               <div className="text-xs font-semibold uppercase tracking-wider text-green-400/70">
-                Yes
+                {isCrypto && isUpDown ? "Up" : "Yes"}
               </div>
               <div className="mt-1 text-2xl font-black tabular-nums text-green-400">
                 {yesPercent}
@@ -118,7 +130,7 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
             <div className="absolute inset-0 bg-gradient-to-t from-red-500/10 to-transparent opacity-0 transition-opacity group-hover/btn:opacity-100" />
             <div className="relative">
               <div className="text-xs font-semibold uppercase tracking-wider text-red-400/70">
-                No
+                {isCrypto && isUpDown ? "Down" : "No"}
               </div>
               <div className="mt-1 text-2xl font-black tabular-nums text-red-400">
                 {noPercent}

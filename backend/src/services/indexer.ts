@@ -41,6 +41,7 @@ import {
 
 import * as db from "./database";
 import { computeAmmPrices, calculateProtocolFee } from "./amm";
+import { resolveMarket as resolveWithOracle, isMarketExpired } from "./oracle";
 
 // ---------------------------------------------------------------------------
 // Module-level state
@@ -285,6 +286,14 @@ async function handleMarketCreated(
     creator_liquidity_withdrawn: false,
     category: null,
     cover_image: null,
+    // Crypto Up/Down fields — defaults for standard prediction markets
+    market_type: "prediction",
+    crypto_asset: null,
+    crypto_timeframe: null,
+    crypto_subtype: null,
+    strike_price: null,
+    start_price: null,
+    oracle_source: null,
   };
 
   await db.upsertMarket(market);
@@ -826,6 +835,110 @@ async function processLogs(logs: Logs, context: SolanaContext): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Crypto Up/Down Auto-Resolution Poller
+// ---------------------------------------------------------------------------
+
+/** Interval handle for the auto-resolution poller. */
+let autoResolveInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Periodically check for expired Crypto Up/Down markets and auto-resolve them
+ * using the oracle price service.
+ *
+ * This runs every 10 seconds and:
+ *   1. Fetches all active crypto_updown markets
+ *   2. Checks if resolution_timestamp has passed
+ *   3. Fetches the current price from Pyth/CoinGecko
+ *   4. Determines the winning outcome
+ *   5. Updates the market status to Resolved
+ *   6. Broadcasts the resolution via WebSocket
+ */
+async function pollCryptoResolutions(): Promise<void> {
+  try {
+    const { data: markets } = await db.getMarkets({
+      status: MarketStatus.Active,
+      marketType: "crypto_updown",
+      limit: 100,
+    });
+
+    for (const market of markets) {
+      if (!isMarketExpired(market.resolution_timestamp)) continue;
+      if (!market.crypto_asset || !market.crypto_subtype) continue;
+
+      console.log(`[indexer] Auto-resolving crypto market ${market.id} (${market.crypto_asset} ${market.crypto_subtype})`);
+
+      try {
+        const result = await resolveWithOracle({
+          asset: market.crypto_asset,
+          subtype: market.crypto_subtype as "up_down" | "price_target",
+          startPrice: market.start_price || 0,
+          strikePrice: market.strike_price || undefined,
+        });
+
+        await db.updateMarketFields(market.id, {
+          status: MarketStatus.Resolved,
+          winning_outcome: result.winningOutcome,
+          evidence_url: result.evidence,
+        });
+
+        // Log the resolution
+        await db.insertEvidenceLog({
+          market_id: market.id,
+          submitter: "oracle:" + result.priceSource,
+          action: "resolve",
+          outcome: result.winningOutcome,
+          evidence_url: result.evidence,
+          evidence_snapshot: JSON.stringify({
+            finalPrice: result.finalPrice,
+            startPrice: market.start_price,
+            strikePrice: market.strike_price,
+            source: result.priceSource,
+          }),
+          stake_amount: "0",
+          tx_signature: `oracle-resolve-${market.id}-${Date.now()}`,
+          slot: 0,
+        });
+
+        console.log(
+          `[indexer] Market ${market.id} resolved: ${result.winningOutcome === 0 ? "YES/UP" : "NO/DOWN"} ` +
+          `(final price: $${result.finalPrice}, source: ${result.priceSource})`,
+        );
+
+        if (broadcastFn) {
+          broadcastFn({
+            type: "market_resolved",
+            data: {
+              id: market.id,
+              winning_outcome: result.winningOutcome,
+              evidence_url: result.evidence,
+            },
+          });
+        }
+      } catch (err) {
+        console.error(`[indexer] Failed to auto-resolve market ${market.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error("[indexer] Error in pollCryptoResolutions:", err);
+  }
+}
+
+function startAutoResolutionPoller(): void {
+  if (autoResolveInterval) return;
+  console.log("[indexer] Starting crypto market auto-resolution poller (10s interval)");
+  autoResolveInterval = setInterval(pollCryptoResolutions, 10_000);
+  // Run once immediately.
+  pollCryptoResolutions();
+}
+
+function stopAutoResolutionPoller(): void {
+  if (autoResolveInterval) {
+    clearInterval(autoResolveInterval);
+    autoResolveInterval = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -855,6 +968,9 @@ export function startIndexer(broadcast: ((msg: WsMessage) => void) | null): void
   console.log(`[indexer] RPC endpoint: ${rpcUrl}`);
 
   subscribe();
+
+  // Start the crypto market auto-resolution poller.
+  startAutoResolutionPoller();
 }
 
 /**
@@ -896,6 +1012,7 @@ function subscribe(): void {
  * Gracefully stop the indexer (call on server shutdown).
  */
 export async function stopIndexer(): Promise<void> {
+  stopAutoResolutionPoller();
   if (subscriptionId !== null && connection) {
     try {
       await connection.removeOnLogsListener(subscriptionId);

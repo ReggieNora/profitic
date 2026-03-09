@@ -54,6 +54,8 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
   );
   const displayPrice = side === "yes" ? currentPrice : 1 - currentPrice;
   const isYes = side === "yes";
+  const isCryptoUpDown = market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down";
+  const sideLabel = isCryptoUpDown ? (isYes ? "UP" : "DOWN") : side.toUpperCase();
 
   // Reset amount when modal opens
   useEffect(() => {
@@ -124,12 +126,12 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
                   isYes ? "text-green-400" : "text-red-400"
                 }`}
               >
-                {isYes ? "Y" : "N"}
+                {isCryptoUpDown ? (isYes ? "\u2191" : "\u2193") : (isYes ? "Y" : "N")}
               </span>
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">
-                Buy {side.toUpperCase()}
+                Buy {sideLabel}
               </h3>
               <p className="text-xs text-gray-500">
                 Current price: {formatProbability(displayPrice)}

@@ -2,12 +2,13 @@
  * Profitic Backend — Markets REST API Routes
  *
  * Endpoints:
- *   GET /markets               List markets (paginated, filterable by status/search)
+ *   GET /markets               List markets (paginated, filterable by status/search/market_type)
  *   GET /markets/trending      Get trending markets by volume
  *   GET /markets/:id           Get a single market by on-chain ID
  *   GET /markets/:id/trades    Get trade history for a market
  *   GET /markets/:id/evidence  Get evidence logs for a market
  *   GET /markets/:id/liquidity Get liquidity provisions for a market
+ *   GET /markets/:id/price     Get live oracle price (crypto markets only)
  *   GET /treasury              Get treasury fee summary
  */
 
@@ -23,6 +24,7 @@ import {
   getTrendingMarkets,
   getTreasurySummary,
 } from "../services/database";
+import { getPrice } from "../services/oracle";
 import { MarketStatus, PaginatedResponse, Market, Trade, Comment, MarketDetailResponse, LiquidityProvision } from "../models/types";
 
 const router = Router();
@@ -44,11 +46,14 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const marketType = req.query.market_type as string | undefined;
+
     const { data, total } = await getMarkets({
       status: status as MarketStatus | undefined,
       search,
       page,
       limit,
+      marketType,
     });
 
     const response: PaginatedResponse<Market> = { data, total, page, limit };
@@ -251,6 +256,45 @@ router.post("/:id/comments", async (req: Request, res: Response): Promise<void> 
     res.status(201).json(comment);
   } catch (err) {
     console.error(`[markets] POST /markets/${req.params.id}/comments error:`, err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /markets/:id/price — Live oracle price for crypto markets
+// ---------------------------------------------------------------------------
+router.get("/:id/price", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Market ID must be an integer" });
+      return;
+    }
+
+    const market = await getMarketById(id);
+    if (!market) {
+      res.status(404).json({ error: "Market not found" });
+      return;
+    }
+
+    if (market.market_type !== "crypto_updown" || !market.crypto_asset) {
+      res.status(400).json({ error: "Price endpoint only available for Crypto Up/Down markets" });
+      return;
+    }
+
+    const priceData = await getPrice(market.crypto_asset);
+    res.json({
+      market_id: id,
+      asset: market.crypto_asset,
+      current_price: priceData.price,
+      start_price: market.start_price,
+      strike_price: market.strike_price,
+      confidence: priceData.confidence,
+      source: priceData.source,
+      timestamp: priceData.timestamp,
+    });
+  } catch (err) {
+    console.error(`[markets] GET /markets/${req.params.id}/price error:`, err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

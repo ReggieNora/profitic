@@ -82,6 +82,10 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
     );
   }
 
+  const isCryptoUpDown = market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down";
+  const yesLabel = isCryptoUpDown ? "UP" : "YES";
+  const noLabel = isCryptoUpDown ? "DOWN" : "NO";
+
   return (
     <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-5 space-y-4">
       <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-400">Trade</h3>
@@ -120,7 +124,7 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
             }`}
           >
             <div className={`text-sm font-bold ${outcome === "yes" ? "text-green-400" : "text-gray-400"}`}>
-              YES
+              {yesLabel}
             </div>
             <div className={`mt-0.5 text-xs ${outcome === "yes" ? "text-green-400/60" : "text-gray-500"}`}>
               {formatProbability(currentYesPrice)}
@@ -135,7 +139,7 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
             }`}
           >
             <div className={`text-sm font-bold ${outcome === "no" ? "text-red-400" : "text-gray-400"}`}>
-              NO
+              {noLabel}
             </div>
             <div className={`mt-0.5 text-xs ${outcome === "no" ? "text-red-400/60" : "text-gray-500"}`}>
               {formatProbability(currentNoPrice)}

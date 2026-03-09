@@ -60,6 +60,13 @@ export async function upsertMarket(market: Omit<Market, "updated_at">): Promise<
       yes_price: market.yes_price,
       no_price: market.no_price,
       total_volume: market.total_volume,
+      market_type: market.market_type || "prediction",
+      crypto_asset: market.crypto_asset,
+      crypto_timeframe: market.crypto_timeframe,
+      crypto_subtype: market.crypto_subtype,
+      strike_price: market.strike_price,
+      start_price: market.start_price,
+      oracle_source: market.oracle_source,
     },
     { onConflict: "id" }
   );
@@ -120,8 +127,9 @@ export async function getMarkets(options: {
   page?: number;
   limit?: number;
   search?: string;
+  marketType?: string;
 }): Promise<{ data: Market[]; total: number }> {
-  const { status, page = 1, limit = 20, search } = options;
+  const { status, page = 1, limit = 20, search, marketType } = options;
   const offset = (page - 1) * limit;
 
   const supabase = getSupabase();
@@ -133,6 +141,10 @@ export async function getMarkets(options: {
 
   if (status) {
     query = query.eq("status", status);
+  }
+
+  if (marketType) {
+    query = query.eq("market_type", marketType);
   }
 
   if (search) {

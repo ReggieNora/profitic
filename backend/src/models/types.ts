@@ -128,6 +128,22 @@ export interface Market {
   category: string | null;
   /** Cover image URL */
   cover_image: string | null;
+
+  // --- Crypto Up/Down market fields ---
+  /** Market type: 'prediction' (default) or 'crypto_updown' */
+  market_type: string;
+  /** Crypto asset symbol (BTC, ETH, SOL) — null for prediction markets */
+  crypto_asset: string | null;
+  /** Duration timeframe (5m, 15m, 1h, 4h, 24h) — null for prediction markets */
+  crypto_timeframe: string | null;
+  /** Subtype: 'up_down' or 'price_target' — null for prediction markets */
+  crypto_subtype: string | null;
+  /** Strike price in USD (for price_target subtype) */
+  strike_price: number | null;
+  /** Asset price at market creation (USD) */
+  start_price: number | null;
+  /** Oracle source identifier (e.g. 'pyth') */
+  oracle_source: string | null;
 }
 
 /**
