@@ -1,15 +1,18 @@
 /**
- * Profitic Backend — Postgres Database Service
+ * Profitic Backend — Supabase Database Service
  *
- * Manages the connection pool and provides typed query helpers for every
- * table in the schema (markets, trades, user_positions, evidence_logs).
+ * Provides typed query helpers for every table in the schema
+ * (markets, trades, user_positions, evidence_logs, comments).
+ *
+ * Uses @supabase/supabase-js with a service-role key so the indexer
+ * can write freely (bypasses RLS).
  *
  * All numeric fields that exceed JS safe-integer range (u64 lamport values)
  * are stored as NUMERIC(20,0) in Postgres and exposed as strings to callers
  * so no precision is silently lost.
  */
 
-import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
+import { getSupabase } from "../lib/supabase";
 import {
   Market,
   Trade,
@@ -17,72 +20,7 @@ import {
   EvidenceLog,
   Comment,
   MarketStatus,
-  TradeSide,
-  Outcome,
 } from "../models/types";
-
-// ---------------------------------------------------------------------------
-// Pool singleton
-// ---------------------------------------------------------------------------
-
-/** Shared connection pool — initialised lazily via `getPool()`. */
-let pool: Pool | null = null;
-
-/**
- * Return (and lazily create) the shared Postgres connection pool.
- * Reads `DATABASE_URL` from the environment.
- */
-export function getPool(): Pool {
-  if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error("DATABASE_URL environment variable is not set");
-    }
-    pool = new Pool({
-      connectionString,
-      // Sensible defaults — override via DATABASE_URL query params if needed.
-      max: 20,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
-    });
-
-    // Surface unexpected pool errors to the process log rather than swallow.
-    pool.on("error", (err) => {
-      console.error("[database] Unexpected pool error:", err);
-    });
-  }
-  return pool;
-}
-
-/**
- * Run a single parameterised query against the pool.
- * Shorthand so callers don't need to import Pool directly.
- */
-export async function query<T extends QueryResultRow = any>(
-  text: string,
-  params?: unknown[],
-): Promise<QueryResult<T>> {
-  return getPool().query<T>(text, params);
-}
-
-/**
- * Acquire a dedicated client for use inside a transaction.
- * Caller MUST call `client.release()` when done.
- */
-export async function getClient(): Promise<PoolClient> {
-  return getPool().connect();
-}
-
-/**
- * Gracefully shut down the pool (call on SIGTERM / SIGINT).
- */
-export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
-    console.log("[database] Connection pool closed");
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Market helpers
@@ -93,60 +31,38 @@ export async function closePool(): Promise<void> {
  * detected and on subsequent state-changing events (trades, resolutions).
  */
 export async function upsertMarket(market: Omit<Market, "updated_at">): Promise<void> {
-  await query(
-    `INSERT INTO markets (
-        id, address, creator, question, description,
-        resolution_timestamp, data_source, status,
-        yes_mint, no_mint, yes_supply, no_supply, pool_balance,
-        winning_outcome, evidence_url,
-        proposed_outcome, proposed_evidence_url, proposed_evidence_snapshot,
-        proposal_timestamp, challenge_stake, created_at,
-        yes_price, no_price, total_volume
-     ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24
-     )
-     ON CONFLICT (id) DO UPDATE SET
-        status                    = EXCLUDED.status,
-        yes_supply                = EXCLUDED.yes_supply,
-        no_supply                 = EXCLUDED.no_supply,
-        pool_balance              = EXCLUDED.pool_balance,
-        winning_outcome           = EXCLUDED.winning_outcome,
-        evidence_url              = EXCLUDED.evidence_url,
-        proposed_outcome          = EXCLUDED.proposed_outcome,
-        proposed_evidence_url     = EXCLUDED.proposed_evidence_url,
-        proposed_evidence_snapshot= EXCLUDED.proposed_evidence_snapshot,
-        proposal_timestamp        = EXCLUDED.proposal_timestamp,
-        challenge_stake           = EXCLUDED.challenge_stake,
-        yes_price                 = EXCLUDED.yes_price,
-        no_price                  = EXCLUDED.no_price,
-        total_volume              = EXCLUDED.total_volume`,
-    [
-      market.id,
-      market.address,
-      market.creator,
-      market.question,
-      market.description,
-      market.resolution_timestamp,
-      market.data_source,
-      market.status,
-      market.yes_mint,
-      market.no_mint,
-      market.yes_supply,
-      market.no_supply,
-      market.pool_balance,
-      market.winning_outcome,
-      market.evidence_url,
-      market.proposed_outcome,
-      market.proposed_evidence_url,
-      market.proposed_evidence_snapshot,
-      market.proposal_timestamp,
-      market.challenge_stake,
-      market.created_at,
-      market.yes_price,
-      market.no_price,
-      market.total_volume,
-    ],
+  const supabase = getSupabase();
+  const { error } = await supabase.from("markets").upsert(
+    {
+      id: market.id,
+      address: market.address,
+      creator: market.creator,
+      question: market.question,
+      description: market.description,
+      resolution_timestamp: market.resolution_timestamp,
+      data_source: market.data_source,
+      status: market.status,
+      yes_mint: market.yes_mint,
+      no_mint: market.no_mint,
+      yes_supply: market.yes_supply,
+      no_supply: market.no_supply,
+      pool_balance: market.pool_balance,
+      winning_outcome: market.winning_outcome,
+      evidence_url: market.evidence_url,
+      proposed_outcome: market.proposed_outcome,
+      proposed_evidence_url: market.proposed_evidence_url,
+      proposed_evidence_snapshot: market.proposed_evidence_snapshot,
+      proposal_timestamp: market.proposal_timestamp,
+      challenge_stake: market.challenge_stake,
+      created_at: market.created_at,
+      yes_price: market.yes_price,
+      no_price: market.no_price,
+      total_volume: market.total_volume,
+    },
+    { onConflict: "id" }
   );
+
+  if (error) throw new Error(`[database] upsertMarket failed: ${error.message}`);
 }
 
 /**
@@ -157,24 +73,40 @@ export async function updateMarketFields(
   marketId: number,
   fields: Partial<Market>,
 ): Promise<void> {
-  const entries = Object.entries(fields).filter(
-    ([key]) => key !== "id" && key !== "updated_at",
-  );
-  if (entries.length === 0) return;
+  const updates: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (key !== "id" && key !== "updated_at") {
+      updates[key] = value;
+    }
+  }
+  if (Object.keys(updates).length === 0) return;
 
-  // Build a dynamic SET clause: "col1 = $2, col2 = $3, ..."
-  const setClauses = entries.map(([key], i) => `${key} = $${i + 2}`).join(", ");
-  const values: unknown[] = [marketId, ...entries.map(([, v]) => v)];
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("markets")
+    .update(updates)
+    .eq("id", marketId);
 
-  await query(`UPDATE markets SET ${setClauses} WHERE id = $1`, values);
+  if (error) throw new Error(`[database] updateMarketFields failed: ${error.message}`);
 }
 
 /**
  * Fetch a single market by its on-chain ID.
  */
 export async function getMarketById(id: number): Promise<Market | null> {
-  const { rows } = await query<Market>("SELECT * FROM markets WHERE id = $1", [id]);
-  return rows[0] ?? null;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("markets")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    // PGRST116 = row not found — not an error, just null
+    if (error.code === "PGRST116") return null;
+    throw new Error(`[database] getMarketById failed: ${error.message}`);
+  }
+  return data as Market;
 }
 
 /**
@@ -188,40 +120,30 @@ export async function getMarkets(options: {
   search?: string;
 }): Promise<{ data: Market[]; total: number }> {
   const { status, page = 1, limit = 20, search } = options;
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const offset = (page - 1) * limit;
+
+  const supabase = getSupabase();
+
+  // Build the query
+  let query = supabase
+    .from("markets")
+    .select("*", { count: "exact" });
 
   if (status) {
-    params.push(status);
-    conditions.push(`status = $${params.length}`);
+    query = query.eq("status", status);
   }
 
   if (search) {
-    params.push(search);
-    conditions.push(`question ILIKE '%' || $${params.length} || '%'`);
+    query = query.ilike("question", `%${search}%`);
   }
 
-  const whereClause =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const { data, error, count } = await query
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  // Total count for pagination metadata.
-  const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM markets ${whereClause}`,
-    params,
-  );
-  const total = parseInt(countResult.rows[0].count, 10);
+  if (error) throw new Error(`[database] getMarkets failed: ${error.message}`);
 
-  // Data page.
-  const offset = (page - 1) * limit;
-  params.push(limit, offset);
-  const dataResult = await query<Market>(
-    `SELECT * FROM markets ${whereClause}
-     ORDER BY created_at DESC
-     LIMIT $${params.length - 1} OFFSET $${params.length}`,
-    params,
-  );
-
-  return { data: dataResult.rows, total };
+  return { data: (data as Market[]) || [], total: count ?? 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -230,26 +152,26 @@ export async function getMarkets(options: {
 
 /**
  * Insert a trade row.  Called once per buy/sell event from the indexer.
- * Uses ON CONFLICT DO NOTHING so replayed transactions are harmless.
+ * Uses upsert with ignoreDuplicates so replayed transactions are harmless.
  */
 export async function insertTrade(trade: Omit<Trade, "id" | "created_at">): Promise<void> {
-  await query(
-    `INSERT INTO trades (
-        market_id, user_address, outcome, side, amount, cost, fee, tx_signature, slot
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     ON CONFLICT (tx_signature) DO NOTHING`,
-    [
-      trade.market_id,
-      trade.user_address,
-      trade.outcome,
-      trade.side,
-      trade.amount,
-      trade.cost,
-      trade.fee,
-      trade.tx_signature,
-      trade.slot,
-    ],
+  const supabase = getSupabase();
+  const { error } = await supabase.from("trades").upsert(
+    {
+      market_id: trade.market_id,
+      user_address: trade.user_address,
+      outcome: trade.outcome,
+      side: trade.side,
+      amount: trade.amount,
+      cost: trade.cost,
+      fee: trade.fee,
+      tx_signature: trade.tx_signature,
+      slot: trade.slot,
+    },
+    { onConflict: "tx_signature", ignoreDuplicates: true }
   );
+
+  if (error) throw new Error(`[database] insertTrade failed: ${error.message}`);
 }
 
 /**
@@ -262,20 +184,18 @@ export async function getTradesByMarket(
   const { page = 1, limit = 50 } = options;
   const offset = (page - 1) * limit;
 
-  const countResult = await query<{ count: string }>(
-    "SELECT COUNT(*) AS count FROM trades WHERE market_id = $1",
-    [marketId],
-  );
-  const total = parseInt(countResult.rows[0].count, 10);
+  const supabase = getSupabase();
 
-  const dataResult = await query<Trade>(
-    `SELECT * FROM trades WHERE market_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2 OFFSET $3`,
-    [marketId, limit, offset],
-  );
+  const { data, error, count } = await supabase
+    .from("trades")
+    .select("*", { count: "exact" })
+    .eq("market_id", marketId)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  return { data: dataResult.rows, total };
+  if (error) throw new Error(`[database] getTradesByMarket failed: ${error.message}`);
+
+  return { data: (data as Trade[]) || [], total: count ?? 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +205,7 @@ export async function getTradesByMarket(
 /**
  * Upsert a user's position in a market.  After a buy the indexer increments
  * token counts; after a sell it decrements them.
+ * Uses a Postgres RPC function for the atomic delta arithmetic.
  */
 export async function upsertUserPosition(position: {
   market_id: number;
@@ -293,21 +214,16 @@ export async function upsertUserPosition(position: {
   no_tokens_delta: string;
   invested_delta: string;
 }): Promise<void> {
-  await query(
-    `INSERT INTO user_positions (market_id, user_address, yes_tokens, no_tokens, total_invested)
-     VALUES ($1, $2, GREATEST(0, $3::NUMERIC), GREATEST(0, $4::NUMERIC), GREATEST(0, $5::NUMERIC))
-     ON CONFLICT (market_id, user_address) DO UPDATE SET
-        yes_tokens     = GREATEST(0, user_positions.yes_tokens + $3::NUMERIC),
-        no_tokens      = GREATEST(0, user_positions.no_tokens  + $4::NUMERIC),
-        total_invested = GREATEST(0, user_positions.total_invested + $5::NUMERIC)`,
-    [
-      position.market_id,
-      position.user_address,
-      position.yes_tokens_delta,
-      position.no_tokens_delta,
-      position.invested_delta,
-    ],
-  );
+  const supabase = getSupabase();
+  const { error } = await supabase.rpc("upsert_position", {
+    p_market_id: position.market_id,
+    p_user_address: position.user_address,
+    p_yes_delta: position.yes_tokens_delta,
+    p_no_delta: position.no_tokens_delta,
+    p_invest_delta: position.invested_delta,
+  });
+
+  if (error) throw new Error(`[database] upsertUserPosition failed: ${error.message}`);
 }
 
 /**
@@ -317,10 +233,14 @@ export async function markPositionClaimed(
   marketId: number,
   userAddress: string,
 ): Promise<void> {
-  await query(
-    "UPDATE user_positions SET claimed = TRUE WHERE market_id = $1 AND user_address = $2",
-    [marketId, userAddress],
-  );
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("user_positions")
+    .update({ claimed: true })
+    .eq("market_id", marketId)
+    .eq("user_address", userAddress);
+
+  if (error) throw new Error(`[database] markPositionClaimed failed: ${error.message}`);
 }
 
 /**
@@ -329,17 +249,22 @@ export async function markPositionClaimed(
 export async function getUserPositions(
   userAddress: string,
 ): Promise<(UserPosition & { market_question: string; market_status: MarketStatus })[]> {
-  const { rows } = await query<
-    UserPosition & { market_question: string; market_status: MarketStatus }
-  >(
-    `SELECT up.*, m.question AS market_question, m.status AS market_status
-     FROM user_positions up
-     JOIN markets m ON m.id = up.market_id
-     WHERE up.user_address = $1
-     ORDER BY up.updated_at DESC`,
-    [userAddress],
-  );
-  return rows;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("user_positions")
+    .select("*, markets!inner(question, status)")
+    .eq("user_address", userAddress)
+    .order("updated_at", { ascending: false });
+
+  if (error) throw new Error(`[database] getUserPositions failed: ${error.message}`);
+
+  // Flatten the joined market fields to match the expected return shape
+  return ((data as any[]) || []).map((row) => ({
+    ...row,
+    market_question: row.markets.question,
+    market_status: row.markets.status,
+    markets: undefined,
+  }));
 }
 
 /**
@@ -352,23 +277,25 @@ export async function getUserTradeHistory(
   const { page = 1, limit = 50 } = options;
   const offset = (page - 1) * limit;
 
-  const countResult = await query<{ count: string }>(
-    "SELECT COUNT(*) AS count FROM trades WHERE user_address = $1",
-    [userAddress],
-  );
-  const total = parseInt(countResult.rows[0].count, 10);
+  const supabase = getSupabase();
 
-  const { rows } = await query<Trade & { market_question: string }>(
-    `SELECT t.*, m.question AS market_question
-     FROM trades t
-     JOIN markets m ON m.id = t.market_id
-     WHERE t.user_address = $1
-     ORDER BY t.created_at DESC
-     LIMIT $2 OFFSET $3`,
-    [userAddress, limit, offset],
-  );
+  const { data, error, count } = await supabase
+    .from("trades")
+    .select("*, markets!inner(question)", { count: "exact" })
+    .eq("user_address", userAddress)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  return { data: rows, total };
+  if (error) throw new Error(`[database] getUserTradeHistory failed: ${error.message}`);
+
+  // Flatten the joined market question
+  const rows = ((data as any[]) || []).map((row) => ({
+    ...row,
+    market_question: row.markets.question,
+    markets: undefined,
+  }));
+
+  return { data: rows, total: count ?? 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -381,24 +308,23 @@ export async function getUserTradeHistory(
 export async function insertEvidenceLog(
   log: Omit<EvidenceLog, "id" | "created_at">,
 ): Promise<void> {
-  await query(
-    `INSERT INTO evidence_logs (
-        market_id, submitter, action, outcome, evidence_url,
-        evidence_snapshot, stake_amount, tx_signature, slot
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     ON CONFLICT (tx_signature) DO NOTHING`,
-    [
-      log.market_id,
-      log.submitter,
-      log.action,
-      log.outcome,
-      log.evidence_url,
-      log.evidence_snapshot,
-      log.stake_amount,
-      log.tx_signature,
-      log.slot,
-    ],
+  const supabase = getSupabase();
+  const { error } = await supabase.from("evidence_logs").upsert(
+    {
+      market_id: log.market_id,
+      submitter: log.submitter,
+      action: log.action,
+      outcome: log.outcome,
+      evidence_url: log.evidence_url,
+      evidence_snapshot: log.evidence_snapshot,
+      stake_amount: log.stake_amount,
+      tx_signature: log.tx_signature,
+      slot: log.slot,
+    },
+    { onConflict: "tx_signature", ignoreDuplicates: true }
   );
+
+  if (error) throw new Error(`[database] insertEvidenceLog failed: ${error.message}`);
 }
 
 /**
@@ -407,11 +333,16 @@ export async function insertEvidenceLog(
 export async function getEvidenceByMarket(
   marketId: number,
 ): Promise<EvidenceLog[]> {
-  const { rows } = await query<EvidenceLog>(
-    "SELECT * FROM evidence_logs WHERE market_id = $1 ORDER BY created_at DESC",
-    [marketId],
-  );
-  return rows;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("evidence_logs")
+    .select("*")
+    .eq("market_id", marketId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`[database] getEvidenceByMarket failed: ${error.message}`);
+
+  return (data as EvidenceLog[]) || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -426,13 +357,20 @@ export async function insertComment(comment: {
   user_address: string;
   body: string;
 }): Promise<Comment> {
-  const { rows } = await query<Comment>(
-    `INSERT INTO comments (market_id, user_address, body)
-     VALUES ($1, $2, $3)
-     RETURNING *`,
-    [comment.market_id, comment.user_address, comment.body],
-  );
-  return rows[0];
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("comments")
+    .insert({
+      market_id: comment.market_id,
+      user_address: comment.user_address,
+      body: comment.body,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`[database] insertComment failed: ${error.message}`);
+
+  return data as Comment;
 }
 
 /**
@@ -445,18 +383,29 @@ export async function getCommentsByMarket(
   const { page = 1, limit = 50 } = options;
   const offset = (page - 1) * limit;
 
-  const countResult = await query<{ count: string }>(
-    "SELECT COUNT(*) AS count FROM comments WHERE market_id = $1",
-    [marketId],
-  );
-  const total = parseInt(countResult.rows[0].count, 10);
+  const supabase = getSupabase();
 
-  const { rows } = await query<Comment>(
-    `SELECT * FROM comments WHERE market_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2 OFFSET $3`,
-    [marketId, limit, offset],
-  );
+  const { data, error, count } = await supabase
+    .from("comments")
+    .select("*", { count: "exact" })
+    .eq("market_id", marketId)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
-  return { data: rows, total };
+  if (error) throw new Error(`[database] getCommentsByMarket failed: ${error.message}`);
+
+  return { data: (data as Comment[]) || [], total: count ?? 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Health check
+// ---------------------------------------------------------------------------
+
+/**
+ * Quick connectivity check — used by /api/health endpoint.
+ */
+export async function healthCheck(): Promise<boolean> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("markets").select("id").limit(1);
+  return !error;
 }

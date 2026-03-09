@@ -24,7 +24,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 import marketsRouter from "./routes/markets";
 import usersRouter from "./routes/users";
-import { getPool, closePool } from "./services/database";
+import { healthCheck } from "./services/database";
 import { startIndexer, stopIndexer } from "./services/indexer";
 import { WsMessage } from "./models/types";
 
@@ -64,11 +64,11 @@ app.use("/api/users", usersRouter);
 // Health-check endpoint — useful for load balancers and Docker health probes.
 app.get("/api/health", async (_req, res) => {
   try {
-    // Quick Postgres connectivity check.
-    await getPool().query("SELECT 1");
+    const ok = await healthCheck();
+    if (!ok) throw new Error("Supabase query failed");
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   } catch (err) {
-    console.error("[health] Postgres check failed:", err);
+    console.error("[health] Supabase check failed:", err);
     res.status(503).json({ status: "unhealthy", error: "Database connection failed" });
   }
 });
@@ -156,14 +156,14 @@ async function start(): Promise<void> {
   console.log("  Profitic Backend — Solana Prediction Market Indexer");
   console.log("=".repeat(60));
 
-  // Verify Postgres connectivity before accepting traffic.
+  // Verify Supabase connectivity before accepting traffic.
   try {
-    const pool = getPool();
-    await pool.query("SELECT 1");
-    console.log("[startup] Postgres connected");
+    const ok = await healthCheck();
+    if (!ok) throw new Error("Supabase query failed");
+    console.log("[startup] Supabase connected");
   } catch (err) {
-    console.error("[startup] Failed to connect to Postgres:", err);
-    console.error("[startup] Ensure DATABASE_URL is set and the database is running.");
+    console.error("[startup] Failed to connect to Supabase:", err);
+    console.error("[startup] Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.");
     process.exit(1);
   }
 
@@ -215,9 +215,6 @@ async function shutdown(signal: string): Promise<void> {
   }
   clients.clear();
   console.log("[shutdown] WebSocket connections closed");
-
-  // 4. Drain the Postgres connection pool.
-  await closePool();
 
   console.log("[shutdown] Shutdown complete");
   process.exit(0);
