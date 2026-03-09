@@ -5,12 +5,14 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Market } from "@/types";
 import {
-  calculateBuyCost,
-  marginalPrice,
+  ammSimulateBuy,
+  calculateProtocolFee,
   formatProbability,
   lamportsToSol,
   solToLamports,
+  ammYesProbability,
 } from "@/lib/bondingCurve";
+import { PROTOCOL_FEE_PERCENT } from "@/types";
 
 interface BetModalProps {
   market: Market;
@@ -31,17 +33,26 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
   const amountNum = parseFloat(amount) || 0;
   const amountLamports = solToLamports(amountNum);
 
-  const estimatedCost = useMemo(() => {
-    if (amountNum <= 0) return 0;
-    return calculateBuyCost(
-      market.yesShares,
-      market.noShares,
+  const ammResult = useMemo(() => {
+    if (amountNum <= 0) return null;
+    return ammSimulateBuy(
+      market.yesPool || market.liquidityPool * market.yesPrice,
+      market.noPool || market.liquidityPool * market.noPrice,
       side,
       amountLamports
     );
-  }, [amountNum, amountLamports, side, market.yesShares, market.noShares]);
+  }, [amountNum, amountLamports, side, market.yesPool, market.noPool, market.liquidityPool, market.yesPrice, market.noPrice]);
 
-  const currentPrice = marginalPrice(market.yesShares, market.noShares, side);
+  const feeBreakdown = useMemo(() => {
+    if (amountNum <= 0) return { netAmount: 0, feeAmount: 0 };
+    return calculateProtocolFee(amountLamports);
+  }, [amountNum, amountLamports]);
+
+  const currentPrice = ammYesProbability(
+    market.yesPool || market.liquidityPool * market.yesPrice,
+    market.noPool || market.liquidityPool * market.noPrice,
+  );
+  const displayPrice = side === "yes" ? currentPrice : 1 - currentPrice;
   const isYes = side === "yes";
 
   // Reset amount when modal opens
@@ -121,7 +132,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
                 Buy {side.toUpperCase()}
               </h3>
               <p className="text-xs text-gray-500">
-                Current price: {formatProbability(currentPrice)}
+                Current price: {formatProbability(displayPrice)}
               </p>
             </div>
           </div>
@@ -182,27 +193,42 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
         </div>
 
         {/* Cost estimate */}
-        {amountNum > 0 && (
+        {amountNum > 0 && ammResult && (
           <div className="mx-5 rounded-2xl bg-surface-300/80 p-4 space-y-2.5 animate-fade-in">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500">Estimated Cost</span>
+              <span className="text-xs text-gray-500">Your Bet</span>
               <span className="text-sm font-bold text-white">
-                {lamportsToSol(estimatedCost).toFixed(4)} SOL
+                {amountNum.toFixed(4)} SOL
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500">Avg Price per Share</span>
-              <span className="text-sm font-bold text-white">
-                {amountLamports > 0
-                  ? (estimatedCost / amountLamports).toFixed(4)
-                  : "0.0000"}{" "}
-                SOL
+              <span className="text-xs text-yellow-400/70">Protocol Fee ({PROTOCOL_FEE_PERCENT}%)</span>
+              <span className="text-sm font-semibold text-yellow-400/70">
+                -{lamportsToSol(feeBreakdown.feeAmount).toFixed(4)} SOL
               </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500">Net into Pool</span>
+              <span className="text-sm font-bold text-white">
+                {lamportsToSol(feeBreakdown.netAmount).toFixed(4)} SOL
+              </span>
+            </div>
+            <div className="border-t border-white/5 pt-2 flex items-center justify-between">
+              <span className="text-xs text-gray-500">New Probability</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-green-400">
+                  YES {(ammResult.yesPrice * 100).toFixed(1)}%
+                </span>
+                <span className="text-[10px] text-gray-600">/</span>
+                <span className="text-xs font-bold text-red-400">
+                  NO {(ammResult.noPrice * 100).toFixed(1)}%
+                </span>
+              </div>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-500">Potential Return</span>
               <span className={`text-sm font-bold ${isYes ? "text-green-400" : "text-red-400"}`}>
-                {amountNum.toFixed(4)} SOL
+                {lamportsToSol(ammResult.netAmount).toFixed(4)} SOL
               </span>
             </div>
           </div>

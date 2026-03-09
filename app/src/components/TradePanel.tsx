@@ -5,13 +5,15 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Market, TradeFormData } from "@/types";
 import {
-  calculateBuyCost,
-  calculateSellReturn,
-  marginalPrice,
+  ammSimulateBuy,
+  ammSimulateSell,
+  ammYesProbability,
+  calculateProtocolFee,
   formatProbability,
   lamportsToSol,
   solToLamports,
 } from "@/lib/bondingCurve";
+import { PROTOCOL_FEE_PERCENT } from "@/types";
 
 interface TradePanelProps {
   market: Market;
@@ -28,27 +30,25 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
   const amountNum = parseFloat(amount) || 0;
   const amountLamports = solToLamports(amountNum);
 
-  const estimatedCost = useMemo(() => {
-    if (amountNum <= 0) return 0;
-    if (direction === "buy") {
-      return calculateBuyCost(
-        market.yesShares,
-        market.noShares,
-        outcome,
-        amountLamports
-      );
-    } else {
-      return calculateSellReturn(
-        market.yesShares,
-        market.noShares,
-        outcome,
-        amountLamports
-      );
-    }
-  }, [amountNum, amountLamports, direction, outcome, market.yesShares, market.noShares]);
+  const yesPool = market.yesPool || market.liquidityPool * market.yesPrice;
+  const noPool = market.noPool || market.liquidityPool * market.noPrice;
 
-  const currentYesPrice = marginalPrice(market.yesShares, market.noShares, "yes");
-  const currentNoPrice = marginalPrice(market.yesShares, market.noShares, "no");
+  const ammResult = useMemo(() => {
+    if (amountNum <= 0) return null;
+    if (direction === "buy") {
+      return ammSimulateBuy(yesPool, noPool, outcome, amountLamports);
+    } else {
+      return ammSimulateSell(yesPool, noPool, outcome, amountLamports);
+    }
+  }, [amountNum, amountLamports, direction, outcome, yesPool, noPool]);
+
+  const feeBreakdown = useMemo(() => {
+    if (amountNum <= 0) return { netAmount: 0, feeAmount: 0 };
+    return calculateProtocolFee(amountLamports);
+  }, [amountNum, amountLamports]);
+
+  const currentYesPrice = ammYesProbability(yesPool, noPool);
+  const currentNoPrice = 1 - currentYesPrice;
 
   const handleSubmit = useCallback(async () => {
     if (!onTrade || amountNum <= 0) return;
@@ -165,24 +165,35 @@ export default function TradePanel({ market, onTrade }: TradePanelProps) {
         </div>
       </div>
 
-      {/* Estimated Cost */}
-      {amountNum > 0 && (
+      {/* Estimated Cost with Fee Breakdown */}
+      {amountNum > 0 && ammResult && (
         <div className="rounded-xl bg-surface-400/80 p-3.5 space-y-2 animate-fade-in">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-xs text-gray-500">
-              {direction === "buy" ? "Est. Cost" : "Est. Return"}
-            </span>
+            <span className="text-xs text-gray-500">Amount</span>
             <span className="font-bold text-white">
-              {lamportsToSol(estimatedCost).toFixed(4)} SOL
+              {amountNum.toFixed(4)} SOL
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-xs text-gray-500">Avg Price</span>
+            <span className="text-xs text-yellow-400/70">Fee ({PROTOCOL_FEE_PERCENT}%)</span>
+            <span className="font-semibold text-yellow-400/70">
+              -{lamportsToSol(feeBreakdown.feeAmount).toFixed(4)} SOL
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm border-t border-white/5 pt-2">
+            <span className="text-xs text-gray-500">
+              {direction === "buy" ? "Net into Pool" : "Net Return"}
+            </span>
             <span className="font-bold text-white">
-              {amountLamports > 0
-                ? (estimatedCost / amountLamports).toFixed(4)
-                : "0.0000"}{" "}
-              SOL
+              {lamportsToSol(feeBreakdown.netAmount).toFixed(4)} SOL
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-xs text-gray-500">New Price</span>
+            <span className="font-bold text-white">
+              <span className="text-green-400">{(ammResult.yesPrice * 100).toFixed(1)}%</span>
+              <span className="text-gray-600 mx-1">/</span>
+              <span className="text-red-400">{(ammResult.noPrice * 100).toFixed(1)}%</span>
             </span>
           </div>
         </div>

@@ -59,11 +59,28 @@ export function useMarkets(options: UseMarketsOptions = {}): UseMarketsReturn {
   return { markets, loading, error, refetch: fetchMarkets };
 }
 
+function withAmmDefaults(m: Market): Market {
+  // Derive AMM pools from the existing yesPrice/noPrice and liquidityPool
+  const yesPool = Math.round(m.liquidityPool * m.yesPrice);
+  const noPool = m.liquidityPool - yesPool;
+  const creatorLiquidity = Math.round(m.liquidityPool * 0.5); // initial 50/50 split
+  return {
+    ...m,
+    status: m.resolved ? "resolved" as const : "active" as const,
+    yesPool,
+    noPool,
+    feesCollected: Math.round(m.totalVolume * 0.02),
+    creatorYesLiquidity: creatorLiquidity,
+    creatorNoLiquidity: creatorLiquidity,
+    creatorLiquidityWithdrawn: false,
+  };
+}
+
 function getDemoMarkets(): Market[] {
   const now = Math.floor(Date.now() / 1000);
   return [
     // ── Crypto ──
-    {
+    withAmmDefaults({
       id: "demo-1",
       publicKey: "Demo11111111111111111111111111111111111111",
       question: "Will Bitcoin exceed $150,000 by end of Q2 2026?",
@@ -82,8 +99,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.4,
       resolved: false,
       createdAt: now - 86400 * 5,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-2",
       publicKey: "Demo22222222222222222222222222222222222222",
       question: "Will Ethereum implement full danksharding in 2026?",
@@ -101,8 +118,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.733,
       resolved: false,
       createdAt: now - 86400 * 10,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-3",
       publicKey: "Demo33333333333333333333333333333333333333",
       question: "Will Solana TPS exceed 100,000 sustained for 24h?",
@@ -120,8 +137,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.5,
       resolved: false,
       createdAt: now - 86400 * 3,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-4",
       publicKey: "Demo44444444444444444444444444444444444444",
       question: "Will the US approve a spot Solana ETF by July 2026?",
@@ -160,8 +177,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.53,
       resolved: false,
       createdAt: now - 86400 * 7,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-6",
       publicKey: "Demo66666666666666666666666666666666666666",
       question: "Will the S&P 500 close above 6,500 before July 2026?",
@@ -180,8 +197,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.29,
       resolved: false,
       createdAt: now - 86400 * 4,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-7",
       publicKey: "Demo77777777777777777777777777777777777777",
       question: "Will US inflation drop below 2.5% by Q3 2026?",
@@ -220,8 +237,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.36,
       resolved: false,
       createdAt: now - 86400 * 6,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-9",
       publicKey: "Demo99999999999999999999999999999999999999",
       question: "Will Congress pass a federal stablecoin bill in 2026?",
@@ -239,8 +256,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.6,
       resolved: false,
       createdAt: now - 86400 * 14,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-10",
       publicKey: "DemoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       question: "Will the EU finalize MiCA enforcement by mid-2026?",
@@ -278,8 +295,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.72,
       resolved: false,
       createdAt: now - 86400 * 8,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-12",
       publicKey: "DemoCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
       question: "Will global average temperature set a new record in 2026?",
@@ -298,8 +315,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.48,
       resolved: false,
       createdAt: now - 86400 * 2,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-13",
       publicKey: "DemoDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
       question: "Will El Salvador issue a Bitcoin-backed bond in 2026?",
@@ -339,8 +356,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.29,
       resolved: false,
       createdAt: now - 86400 * 2,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-15",
       publicKey: "DemoFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
       question: "Will Apple ship an AI-native Siri in iOS 20?",
@@ -358,8 +375,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.32,
       resolved: false,
       createdAt: now - 86400 * 1,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-16",
       publicKey: "DemoGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
       question: "Will an AI model score above 90% on the ARC-AGI benchmark?",
@@ -398,8 +415,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.72,
       resolved: false,
       createdAt: now - 86400 * 4,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-18",
       publicKey: "DemoIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
       question: "Will a FIFA Club World Cup match draw 100K+ viewers on-chain?",
@@ -417,8 +434,8 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.84,
       resolved: false,
       createdAt: now - 86400 * 6,
-    },
-    {
+    }),
+    withAmmDefaults({
       id: "demo-19",
       publicKey: "DemoJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ",
       question: "Will an NBA team be tokenized on Solana by end of 2026?",
@@ -436,6 +453,6 @@ function getDemoMarkets(): Market[] {
       noPrice: 0.8,
       resolved: false,
       createdAt: now - 86400 * 1,
-    },
+    }),
   ];
 }

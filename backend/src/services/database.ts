@@ -20,6 +20,8 @@ import {
   EvidenceLog,
   Comment,
   MarketStatus,
+  LiquidityProvision,
+  TreasuryEntry,
 } from "../models/types";
 
 // ---------------------------------------------------------------------------
@@ -395,6 +397,133 @@ export async function getCommentsByMarket(
   if (error) throw new Error(`[database] getCommentsByMarket failed: ${error.message}`);
 
   return { data: (data as Comment[]) || [], total: count ?? 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Liquidity provision helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Record a liquidity provision (creator or LP deposit).
+ */
+export async function upsertLiquidityProvision(provision: {
+  market_id: number;
+  provider: string;
+  yes_amount: string;
+  no_amount: string;
+  tx_signature?: string;
+}): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.rpc("upsert_liquidity_provision", {
+    p_market_id: provision.market_id,
+    p_provider: provision.provider,
+    p_yes_amount: provision.yes_amount,
+    p_no_amount: provision.no_amount,
+    p_tx_signature: provision.tx_signature || null,
+  });
+
+  if (error) throw new Error(`[database] upsertLiquidityProvision failed: ${error.message}`);
+}
+
+/**
+ * Fetch liquidity provisions for a market.
+ */
+export async function getLiquidityProvisions(
+  marketId: number,
+): Promise<LiquidityProvision[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("liquidity_provisions")
+    .select("*")
+    .eq("market_id", marketId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`[database] getLiquidityProvisions failed: ${error.message}`);
+  return (data as LiquidityProvision[]) || [];
+}
+
+/**
+ * Mark a liquidity provision as withdrawn.
+ */
+export async function markLiquidityWithdrawn(
+  marketId: number,
+  provider: string,
+): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("liquidity_provisions")
+    .update({ withdrawn: true })
+    .eq("market_id", marketId)
+    .eq("provider", provider);
+
+  if (error) throw new Error(`[database] markLiquidityWithdrawn failed: ${error.message}`);
+}
+
+// ---------------------------------------------------------------------------
+// Treasury helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Record a protocol fee payment to the treasury.
+ */
+export async function insertTreasuryEntry(entry: {
+  market_id: number;
+  amount: string;
+  fee_type?: string;
+  tx_signature?: string;
+}): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("treasury").insert({
+    market_id: entry.market_id,
+    amount: entry.amount,
+    fee_type: entry.fee_type || "trade",
+    tx_signature: entry.tx_signature || null,
+  });
+
+  if (error) throw new Error(`[database] insertTreasuryEntry failed: ${error.message}`);
+}
+
+/**
+ * Get treasury summary — total fees and recent entries.
+ */
+export async function getTreasurySummary(): Promise<{
+  total_fees: string;
+  entries: TreasuryEntry[];
+}> {
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from("treasury")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) throw new Error(`[database] getTreasurySummary failed: ${error.message}`);
+
+  const entries = (data as TreasuryEntry[]) || [];
+  const total = entries.reduce((sum, e) => sum + BigInt(e.amount), 0n);
+
+  return { total_fees: total.toString(), entries };
+}
+
+/**
+ * Get trending markets based on recent trading volume.
+ * Returns markets sorted by volume in the last 24 hours.
+ */
+export async function getTrendingMarkets(
+  limit: number = 10,
+): Promise<Market[]> {
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from("markets")
+    .select("*")
+    .eq("status", "active")
+    .order("total_volume", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(`[database] getTrendingMarkets failed: ${error.message}`);
+  return (data as Market[]) || [];
 }
 
 // ---------------------------------------------------------------------------

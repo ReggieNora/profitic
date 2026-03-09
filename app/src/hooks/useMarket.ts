@@ -68,6 +68,7 @@ function getDemoMarket(id: string): Market {
     resolutionDate: now + 86400 * 30,
     dataSourceUrl: "https://www.coingecko.com/en/coins/bitcoin",
     outcome: "unresolved",
+    status: "active",
     yesShares: 15000,
     noShares: 10000,
     totalVolume: 50_000_000_000,
@@ -76,6 +77,12 @@ function getDemoMarket(id: string): Market {
     noPrice: 0.4,
     resolved: false,
     createdAt: now - 86400 * 5,
+    yesPool: 15_000_000_000,
+    noPool: 10_000_000_000,
+    feesCollected: 1_000_000_000,
+    creatorYesLiquidity: 12_500_000_000,
+    creatorNoLiquidity: 12_500_000_000,
+    creatorLiquidityWithdrawn: false,
   };
 }
 
@@ -92,6 +99,7 @@ function getDemoTrades(marketId: string): Trade[] {
       price: 0.58,
       cost: 290_000_000,
       timestamp: now - 3600,
+      fee: 5_800_000,
       txSignature: "5xAbC...demo1",
     },
     {
@@ -104,6 +112,7 @@ function getDemoTrades(marketId: string): Trade[] {
       price: 0.41,
       cost: 123_000_000,
       timestamp: now - 7200,
+      fee: 2_460_000,
       txSignature: "5xDeF...demo2",
     },
     {
@@ -116,6 +125,7 @@ function getDemoTrades(marketId: string): Trade[] {
       price: 0.62,
       cost: 93_000_000,
       timestamp: now - 10800,
+      fee: 1_860_000,
       txSignature: "5xGhI...demo3",
     },
     {
@@ -128,6 +138,7 @@ function getDemoTrades(marketId: string): Trade[] {
       price: 0.55,
       cost: 550_000_000,
       timestamp: now - 21600,
+      fee: 11_000_000,
       txSignature: "5xJkL...demo4",
     },
     {
@@ -140,6 +151,7 @@ function getDemoTrades(marketId: string): Trade[] {
       price: 0.38,
       cost: 304_000_000,
       timestamp: now - 43200,
+      fee: 6_080_000,
       txSignature: "5xMnO...demo5",
     },
   ];

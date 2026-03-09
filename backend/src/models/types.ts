@@ -11,12 +11,14 @@
 
 /**
  * Market lifecycle status. Maps directly to the on-chain MarketStatus enum.
+ *   Funding            -> creator depositing initial liquidity
  *   Active             -> open for trading
  *   ProposedResolution -> AI/admin proposed an outcome, dispute window open
  *   Resolved           -> winning outcome determined, claims allowed
  *   Cancelled          -> market voided, funds returned
  */
 export enum MarketStatus {
+  Funding = "funding",
   Active = "active",
   ProposedResolution = "proposed_resolution",
   Resolved = "resolved",
@@ -38,6 +40,16 @@ export enum Outcome {
   Yes = 0,
   No = 1,
 }
+
+// ---------------------------------------------------------------------------
+// Protocol Constants
+// ---------------------------------------------------------------------------
+
+/** Protocol trading fee: 2% (expressed as basis points) */
+export const PROTOCOL_FEE_BPS = 200;
+
+/** Fee denominator for basis point calculations */
+export const FEE_DENOMINATOR = 10_000;
 
 // ---------------------------------------------------------------------------
 // Database Row Interfaces (what Postgres stores / returns)
@@ -98,6 +110,24 @@ export interface Market {
   total_volume: string;
   /** When the row was last updated */
   updated_at: Date;
+
+  // --- AMM Liquidity Pool fields ---
+  /** YES side of the AMM pool (lamports) */
+  yes_pool: string;
+  /** NO side of the AMM pool (lamports) */
+  no_pool: string;
+  /** Total protocol fees collected on this market (lamports) */
+  fees_collected: string;
+  /** Creator's initial YES liquidity deposit (lamports) */
+  creator_yes_liquidity: string;
+  /** Creator's initial NO liquidity deposit (lamports) */
+  creator_no_liquidity: string;
+  /** Whether creator liquidity has been withdrawn post-resolution */
+  creator_liquidity_withdrawn: boolean;
+  /** Market category */
+  category: string | null;
+  /** Cover image URL */
+  cover_image: string | null;
 }
 
 /**
@@ -187,6 +217,58 @@ export interface Comment {
   created_at: Date;
 }
 
+/**
+ * A liquidity provision record.
+ */
+export interface LiquidityProvision {
+  id: number;
+  market_id: number;
+  provider: string;
+  yes_amount: string;
+  no_amount: string;
+  fees_earned: string;
+  withdrawn: boolean;
+  tx_signature: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * A treasury fee record.
+ */
+export interface TreasuryEntry {
+  id: number;
+  market_id: number;
+  amount: string;
+  fee_type: string;
+  tx_signature: string | null;
+  created_at: Date;
+}
+
+/**
+ * Token reward configuration.
+ */
+export interface RewardConfig {
+  id: number;
+  reward_type: string;
+  rate: number;
+  enabled: boolean;
+  updated_at: Date;
+}
+
+/**
+ * Token reward ledger entry.
+ */
+export interface RewardLedgerEntry {
+  id: number;
+  user_address: string;
+  reward_type: string;
+  market_id: number | null;
+  amount: number;
+  claimed: boolean;
+  created_at: Date;
+}
+
 // ---------------------------------------------------------------------------
 // API Response Wrappers
 // ---------------------------------------------------------------------------
@@ -226,6 +308,14 @@ export interface UserHistoryResponse {
   limit: number;
 }
 
+/**
+ * Treasury summary response.
+ */
+export interface TreasurySummaryResponse {
+  total_fees: string;
+  entries: TreasuryEntry[];
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket Message Types
 // ---------------------------------------------------------------------------
@@ -238,8 +328,9 @@ export type WsMessage =
   | { type: "market_update"; data: Partial<Market> & { id: number } }
   | { type: "market_created"; data: Market }
   | { type: "market_resolved"; data: { id: number; winning_outcome: number; evidence_url: string } }
-  | { type: "price_update"; data: { market_id: number; yes_price: number; no_price: number } }
-  | { type: "new_comment"; data: Comment };
+  | { type: "price_update"; data: { market_id: number; yes_price: number; no_price: number; yes_pool: string; no_pool: string } }
+  | { type: "new_comment"; data: Comment }
+  | { type: "liquidity_added"; data: { market_id: number; provider: string; yes_amount: string; no_amount: string } };
 
 // ---------------------------------------------------------------------------
 // Indexer Internal Types

@@ -23,6 +23,8 @@ export default function CreateMarketPage() {
     dataSourceUrl: "",
     coverImage: "",
     videoUrl: "",
+    initialYesLiquidity: "500",
+    initialNoLiquidity: "500",
   });
 
   const handleChange = (
@@ -39,12 +41,19 @@ export default function CreateMarketPage() {
     setForm((prev) => ({ ...prev, coverImage: url }));
   };
 
+  const yesLiq = parseFloat(form.initialYesLiquidity) || 0;
+  const noLiq = parseFloat(form.initialNoLiquidity) || 0;
+  const totalLiq = yesLiq + noLiq;
+  const startingProb = totalLiq > 0 ? ((yesLiq / totalLiq) * 100).toFixed(0) : "50";
+
   const isValid =
     form.question.trim().length >= 10 &&
     form.description.trim().length >= 20 &&
     form.category !== "" &&
     form.resolutionDate &&
-    form.dataSourceUrl.trim().startsWith("http");
+    form.dataSourceUrl.trim().startsWith("http") &&
+    yesLiq > 0 &&
+    noLiq > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,10 +70,14 @@ export default function CreateMarketPage() {
         ...form,
         resolutionTimestamp,
         creator: publicKey?.toBase58(),
+        initialYesLiquidity: yesLiq,
+        initialNoLiquidity: noLiq,
+        totalLiquidity: totalLiq,
+        startingProbability: `YES ${startingProb}%`,
       });
 
       alert(
-        "Market creation submitted!\n\nIn production, this sends a createMarket transaction to the Solana program."
+        `Market creation submitted!\n\nInitial liquidity: ${totalLiq} SOL (${yesLiq} YES / ${noLiq} NO)\nStarting probability: YES ${startingProb}%\n2% protocol fee on all trades.\n\nIn production, this sends a createMarket + addLiquidity transaction to the Solana program.`
       );
       router.push("/");
     } catch (err) {
@@ -262,6 +275,85 @@ export default function CreateMarketPage() {
                 YouTube or X/Twitter video link. Plays inline on the card.
               </p>
             </div>
+          </div>
+
+          {/* Initial Liquidity */}
+          <div className="space-y-4 rounded-2xl border border-primary-500/20 bg-primary-500/5 p-5">
+            <div>
+              <p className="text-xs font-semibold text-primary-400 uppercase tracking-wider">
+                Initial Liquidity <span className="text-red-400">*</span>
+              </p>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Seed your market with liquidity. This determines the starting probability and is locked until market resolution.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label
+                  htmlFor="initialYesLiquidity"
+                  className="mb-1.5 block text-xs font-semibold text-green-400"
+                >
+                  YES Pool (SOL)
+                </label>
+                <input
+                  id="initialYesLiquidity"
+                  name="initialYesLiquidity"
+                  type="number"
+                  value={form.initialYesLiquidity}
+                  onChange={handleChange}
+                  placeholder="500"
+                  min="0"
+                  step="0.1"
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="initialNoLiquidity"
+                  className="mb-1.5 block text-xs font-semibold text-red-400"
+                >
+                  NO Pool (SOL)
+                </label>
+                <input
+                  id="initialNoLiquidity"
+                  name="initialNoLiquidity"
+                  type="number"
+                  value={form.initialNoLiquidity}
+                  onChange={handleChange}
+                  placeholder="500"
+                  min="0"
+                  step="0.1"
+                  className="input-field"
+                />
+              </div>
+            </div>
+
+            {totalLiq > 0 && (
+              <div className="rounded-xl bg-surface-300/80 p-3 space-y-2 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Total Pool</span>
+                  <span className="text-sm font-bold text-white">{totalLiq.toFixed(2)} SOL</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Starting Probability</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-green-400">YES {startingProb}%</span>
+                    <span className="text-xs text-gray-600">/</span>
+                    <span className="text-sm font-bold text-red-400">NO {100 - parseInt(startingProb)}%</span>
+                  </div>
+                </div>
+                <div className="relative h-2 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-green-400 to-green-500"
+                    style={{ width: `${startingProb}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-600">
+                  Liquidity is locked until market resolution. You earn a share of trading fees.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4 rounded-2xl border border-surface-50/50 bg-surface-300 p-5">

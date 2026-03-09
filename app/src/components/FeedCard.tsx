@@ -175,6 +175,9 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
   const noPercent = Math.round(market.noPrice * 100);
   const timeLeft = useCountdown(market.resolutionDate);
   const volume = formatSol(lamportsToSol(market.totalVolume));
+  const totalLiquidity = market.yesPool && market.noPool
+    ? formatSol(lamportsToSol(market.yesPool + market.noPool))
+    : formatSol(lamportsToSol(market.liquidityPool));
   const isHot = lamportsToSol(market.totalVolume) > 30;
   const visual = getMarketVisual(market.question, market.id);
   const coverImage = market.coverImage || getAutoCoverImage(market.question, market.category);
@@ -362,10 +365,15 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
             ))}
           </div>
           <span className="text-xs font-semibold text-white/60">
-            {volume} volume
+            {volume} vol
           </span>
+          <span className="text-[10px] text-white/30">|</span>
+          <span className="text-xs font-semibold text-white/60">
+            {totalLiquidity} liq
+          </span>
+          <span className="text-[10px] text-white/30">|</span>
           <span className="text-[10px] text-white/30">
-            {(market.yesShares + market.noShares).toLocaleString()} shares
+            2% fee
           </span>
         </div>
 
@@ -493,7 +501,7 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
           )}
         </div>
         <p className="mt-1 text-xs text-white/40">
-          Vol: {volume} &middot; {(market.yesShares + market.noShares).toLocaleString()} shares traded
+          Vol: {volume} &middot; Liq: {totalLiquidity} &middot; {(market.yesShares + market.noShares).toLocaleString()} shares
         </p>
       </div>
 

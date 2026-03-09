@@ -1,18 +1,135 @@
 import { BONDING_CURVE_K } from "./constants";
+import { PROTOCOL_FEE_BPS } from "@/types";
 
 /**
- * Bonding curve price calculations for the Profitic prediction market.
+ * AMM-based pricing for the Profitic prediction market.
  *
- * Uses a constant-product (LMSR-inspired) bonding curve:
- *   price_yes = yes_shares / (yes_shares + no_shares)
- *   price_no  = no_shares  / (yes_shares + no_shares)
+ * Uses a constant-product pool-ratio model:
+ *   P(YES) = yes_pool / (yes_pool + no_pool)
+ *   P(NO)  = no_pool  / (yes_pool + no_pool)
  *
- * Cost to buy `amount` shares of an outcome is computed via the logarithmic
- * market scoring rule (LMSR):
- *   cost = k * ln( (e^(q_yes/k) + e^(q_no/k)) after ) - k * ln( ... before )
+ * Every trade charges a 2% protocol fee before updating pools.
  *
- * For simplicity on the client we approximate with the constant-product formula.
+ * Legacy LMSR functions are preserved for bonding curve chart display.
  */
+
+// ---------------------------------------------------------------------------
+// AMM Pool-Ratio Pricing (primary pricing model)
+// ---------------------------------------------------------------------------
+
+/** Compute YES probability from AMM pool balances */
+export function ammYesProbability(yesPool: number, noPool: number): number {
+  const total = yesPool + noPool;
+  if (total === 0) return 0.5;
+  return yesPool / total;
+}
+
+/** Compute NO probability from AMM pool balances */
+export function ammNoProbability(yesPool: number, noPool: number): number {
+  return 1 - ammYesProbability(yesPool, noPool);
+}
+
+/**
+ * Calculate the protocol fee for a trade amount.
+ * Returns { netAmount, feeAmount }
+ */
+export function calculateProtocolFee(grossAmount: number): {
+  netAmount: number;
+  feeAmount: number;
+} {
+  const feeAmount = Math.floor((grossAmount * PROTOCOL_FEE_BPS) / 10_000);
+  const netAmount = grossAmount - feeAmount;
+  return { netAmount, feeAmount };
+}
+
+/**
+ * Simulate a buy trade on the AMM.
+ * Returns the new pool state and estimated shares received.
+ */
+export function ammSimulateBuy(
+  yesPool: number,
+  noPool: number,
+  outcome: "yes" | "no",
+  grossAmount: number,
+): {
+  newYesPool: number;
+  newNoPool: number;
+  netAmount: number;
+  feeAmount: number;
+  yesPrice: number;
+  noPrice: number;
+  estimatedShares: number;
+} {
+  const { netAmount, feeAmount } = calculateProtocolFee(grossAmount);
+
+  let newYesPool = yesPool;
+  let newNoPool = noPool;
+  let estimatedShares: number;
+
+  if (outcome === "yes") {
+    const totalPool = yesPool + noPool;
+    estimatedShares = totalPool > 0 ? (netAmount * totalPool) / yesPool : netAmount;
+    newYesPool = yesPool + netAmount;
+  } else {
+    const totalPool = yesPool + noPool;
+    estimatedShares = totalPool > 0 ? (netAmount * totalPool) / noPool : netAmount;
+    newNoPool = noPool + netAmount;
+  }
+
+  const yesPrice = ammYesProbability(newYesPool, newNoPool);
+  const noPrice = 1 - yesPrice;
+
+  return { newYesPool, newNoPool, netAmount, feeAmount, yesPrice, noPrice, estimatedShares };
+}
+
+/**
+ * Simulate a sell trade on the AMM.
+ * Returns the estimated SOL return after fees.
+ */
+export function ammSimulateSell(
+  yesPool: number,
+  noPool: number,
+  outcome: "yes" | "no",
+  sharesAmount: number,
+): {
+  newYesPool: number;
+  newNoPool: number;
+  grossReturn: number;
+  netReturn: number;
+  feeAmount: number;
+  yesPrice: number;
+  noPrice: number;
+} {
+  const totalPool = yesPool + noPool;
+  if (totalPool === 0) {
+    return {
+      newYesPool: 0, newNoPool: 0, grossReturn: 0,
+      netReturn: 0, feeAmount: 0, yesPrice: 0.5, noPrice: 0.5,
+    };
+  }
+
+  let grossReturn: number;
+  let newYesPool = yesPool;
+  let newNoPool = noPool;
+
+  if (outcome === "yes") {
+    grossReturn = Math.min((sharesAmount * yesPool) / totalPool, yesPool);
+    newYesPool = yesPool - grossReturn;
+  } else {
+    grossReturn = Math.min((sharesAmount * noPool) / totalPool, noPool);
+    newNoPool = noPool - grossReturn;
+  }
+
+  const { netAmount: netReturn, feeAmount } = calculateProtocolFee(grossReturn);
+  const yesPrice = ammYesProbability(newYesPool, newNoPool);
+  const noPrice = 1 - yesPrice;
+
+  return { newYesPool, newNoPool, grossReturn, netReturn, feeAmount, yesPrice, noPrice };
+}
+
+// ---------------------------------------------------------------------------
+// Legacy LMSR functions (kept for bonding curve chart)
+// ---------------------------------------------------------------------------
 
 /** Current probability (0-1) for YES given share counts */
 export function yesProbability(yesShares: number, noShares: number): number {
@@ -31,7 +148,6 @@ export function noProbability(yesShares: number, noShares: number): number {
  * C(q) = k * ln(e^(q_yes/k) + e^(q_no/k))
  */
 function lmsrCost(yesShares: number, noShares: number, k: number): number {
-  // Use log-sum-exp trick for numerical stability
   const maxQ = Math.max(yesShares / k, noShares / k);
   const sum =
     Math.exp(yesShares / k - maxQ) + Math.exp(noShares / k - maxQ);
@@ -100,7 +216,6 @@ export function marginalPrice(
 
 /**
  * Generate price curve data points for charting.
- * Simulates buying incremental YES shares and recording the price at each step.
  */
 export function generatePriceCurve(
   yesShares: number,

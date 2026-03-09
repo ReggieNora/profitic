@@ -24,7 +24,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 import marketsRouter from "./routes/markets";
 import usersRouter from "./routes/users";
-import { healthCheck } from "./services/database";
+import { healthCheck, getTreasurySummary } from "./services/database";
 import { startIndexer, stopIndexer } from "./services/indexer";
 import { WsMessage } from "./models/types";
 
@@ -60,6 +60,17 @@ app.use((req, _res, next) => {
 
 app.use("/api/markets", marketsRouter);
 app.use("/api/users", usersRouter);
+
+// Treasury endpoint — protocol fee accumulation summary.
+app.get("/api/treasury", async (_req, res) => {
+  try {
+    const summary = await getTreasurySummary();
+    res.json(summary);
+  } catch (err) {
+    console.error("[treasury] GET /api/treasury error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // Health-check endpoint — useful for load balancers and Docker health probes.
 app.get("/api/health", async (_req, res) => {

@@ -40,6 +40,7 @@ import {
 } from "../models/types";
 
 import * as db from "./database";
+import { computeAmmPrices, calculateProtocolFee } from "./amm";
 
 // ---------------------------------------------------------------------------
 // Module-level state
@@ -62,35 +63,16 @@ let subscriptionId: number | null = null;
 let broadcastFn: ((msg: WsMessage) => void) | null = null;
 
 // ---------------------------------------------------------------------------
-// Bonding-curve price computation (mirrors on-chain logic)
+// AMM price computation (pool-ratio model)
 // ---------------------------------------------------------------------------
 
 /**
- * Compute the marginal price of the next token on the linear bonding curve.
- *
- *   price(supply) = base_price + slope * supply
- *
- * where base_price = 10_000 lamports/token-unit, slope = 10.
- *
- * We normalise to a 0–1 probability range by computing:
- *   yes_price = marginal_yes / (marginal_yes + marginal_no)
- *   no_price  = 1 - yes_price
- *
- * This is an approximation but good enough for display purposes.
+ * Compute prices from AMM pool ratios.
+ * P(YES) = yes_pool / (yes_pool + no_pool)
+ * Falls back to supply-based pricing if pool data not available.
  */
-function computePrices(yesSupply: bigint, noSupply: bigint): { yesPrice: number; noPrice: number } {
-  const BASE_PRICE = 10_000n;
-  const SLOPE = 10n;
-
-  const marginalYes = Number(BASE_PRICE + SLOPE * yesSupply);
-  const marginalNo = Number(BASE_PRICE + SLOPE * noSupply);
-
-  const total = marginalYes + marginalNo;
-  if (total === 0) return { yesPrice: 0.5, noPrice: 0.5 };
-
-  const yesPrice = parseFloat((marginalYes / total).toFixed(6));
-  const noPrice = parseFloat((1 - yesPrice).toFixed(6));
-  return { yesPrice, noPrice };
+function computePrices(yesPool: bigint, noPool: bigint): { yesPrice: number; noPrice: number } {
+  return computeAmmPrices(yesPool, noPool);
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +276,15 @@ async function handleMarketCreated(
     yes_price: 0.5,
     no_price: 0.5,
     total_volume: "0",
+    // AMM pool fields — initialized at zero, updated when liquidity is added
+    yes_pool: "0",
+    no_pool: "0",
+    fees_collected: "0",
+    creator_yes_liquidity: "0",
+    creator_no_liquidity: "0",
+    creator_liquidity_withdrawn: false,
+    category: null,
+    cover_image: null,
   };
 
   await db.upsertMarket(market);
@@ -351,34 +342,61 @@ async function handleBuy(
     invested_delta: cost,
   });
 
-  // Update market supply, pool balance, volume, and derived prices.
+  // Update market supply, AMM pools, volume, and derived prices.
   const market = await db.getMarketById(marketId);
   if (market) {
     const newYesSupply = BigInt(market.yes_supply) + (outcome === 0 ? BigInt(amount) : 0n);
     const newNoSupply = BigInt(market.no_supply) + (outcome === 1 ? BigInt(amount) : 0n);
     const newPoolBalance = BigInt(market.pool_balance) + BigInt(cost);
     const newVolume = BigInt(market.total_volume) + BigInt(cost);
-    const { yesPrice, noPrice } = computePrices(newYesSupply, newNoSupply);
+
+    // AMM pool update: net amount (after fee) goes into the outcome's pool
+    const { netAmount, feeAmount } = calculateProtocolFee(BigInt(cost));
+    const newYesPool = BigInt(market.yes_pool) + (outcome === 0 ? netAmount : 0n);
+    const newNoPool = BigInt(market.no_pool) + (outcome === 1 ? netAmount : 0n);
+    const newFees = BigInt(market.fees_collected) + feeAmount;
+
+    // Prices derived from AMM pool ratios
+    const { yesPrice, noPrice } = computePrices(newYesPool, newNoPool);
 
     await db.updateMarketFields(marketId, {
       yes_supply: newYesSupply.toString(),
       no_supply: newNoSupply.toString(),
       pool_balance: newPoolBalance.toString(),
       total_volume: newVolume.toString(),
+      yes_pool: newYesPool.toString(),
+      no_pool: newNoPool.toString(),
+      fees_collected: newFees.toString(),
       yes_price: yesPrice,
       no_price: noPrice,
     });
+
+    // Record protocol fee to treasury
+    if (feeAmount > 0n) {
+      await db.insertTreasuryEntry({
+        market_id: marketId,
+        amount: feeAmount.toString(),
+        fee_type: "trade",
+        tx_signature: txSignature,
+      });
+    }
 
     // Broadcast price update.
     if (broadcastFn) {
       broadcastFn({
         type: "price_update",
-        data: { market_id: marketId, yes_price: yesPrice, no_price: noPrice },
+        data: {
+          market_id: marketId,
+          yes_price: yesPrice,
+          no_price: noPrice,
+          yes_pool: newYesPool.toString(),
+          no_pool: newNoPool.toString(),
+        },
       });
       broadcastFn({
         type: "trade",
         data: {
-          id: 0, // filled by DB
+          id: 0,
           market_id: marketId,
           user_address: userAddress,
           outcome: outcome as Outcome,
@@ -443,28 +461,62 @@ async function handleSell(
     invested_delta: `-${returnAmount}`,
   });
 
-  // Update market state.
+  // Update market state with AMM pool adjustments.
   const market = await db.getMarketById(marketId);
   if (market) {
     const newYesSupply = BigInt(market.yes_supply) - (outcome === 0 ? BigInt(amount) : 0n);
     const newNoSupply = BigInt(market.no_supply) - (outcome === 1 ? BigInt(amount) : 0n);
     const newPoolBalance = BigInt(market.pool_balance) - BigInt(grossReturn);
     const newVolume = BigInt(market.total_volume) + BigInt(returnAmount);
-    const { yesPrice, noPrice } = computePrices(newYesSupply, newNoSupply);
+
+    // AMM pool update: reduce the outcome's pool by gross return
+    const { feeAmount } = calculateProtocolFee(BigInt(grossReturn));
+    const poolReduction = BigInt(grossReturn) - feeAmount; // net reduction
+    const newYesPool = outcome === 0
+      ? BigInt(market.yes_pool) - poolReduction
+      : BigInt(market.yes_pool);
+    const newNoPool = outcome === 1
+      ? BigInt(market.no_pool) - poolReduction
+      : BigInt(market.no_pool);
+    const newFees = BigInt(market.fees_collected) + feeAmount;
+
+    const { yesPrice, noPrice } = computePrices(
+      newYesPool > 0n ? newYesPool : 0n,
+      newNoPool > 0n ? newNoPool : 0n,
+    );
 
     await db.updateMarketFields(marketId, {
       yes_supply: newYesSupply.toString(),
       no_supply: newNoSupply.toString(),
       pool_balance: newPoolBalance.toString(),
       total_volume: newVolume.toString(),
+      yes_pool: (newYesPool > 0n ? newYesPool : 0n).toString(),
+      no_pool: (newNoPool > 0n ? newNoPool : 0n).toString(),
+      fees_collected: newFees.toString(),
       yes_price: yesPrice,
       no_price: noPrice,
     });
 
+    // Record protocol fee to treasury
+    if (feeAmount > 0n) {
+      await db.insertTreasuryEntry({
+        market_id: marketId,
+        amount: feeAmount.toString(),
+        fee_type: "trade",
+        tx_signature: txSignature,
+      });
+    }
+
     if (broadcastFn) {
       broadcastFn({
         type: "price_update",
-        data: { market_id: marketId, yes_price: yesPrice, no_price: noPrice },
+        data: {
+          market_id: marketId,
+          yes_price: yesPrice,
+          no_price: noPrice,
+          yes_pool: (newYesPool > 0n ? newYesPool : 0n).toString(),
+          no_pool: (newNoPool > 0n ? newNoPool : 0n).toString(),
+        },
       });
       broadcastFn({
         type: "trade",

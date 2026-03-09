@@ -131,11 +131,25 @@ export default function MarketDetailPage() {
       </div>
 
       {/* Stats row */}
-      <div className="mb-6 grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: "120ms" }}>
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 animate-fade-up" style={{ animationDelay: "120ms" }}>
         <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
           <p className="text-xs font-medium text-gray-500">Volume</p>
           <p className="mt-1 text-lg font-bold text-white">
             {formatSol(lamportsToSol(market.totalVolume))}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
+          <p className="text-xs font-medium text-gray-500">Total Liquidity</p>
+          <p className="mt-1 text-lg font-bold text-white">
+            {formatSol(lamportsToSol(
+              (market.yesPool || 0) + (market.noPool || 0) || market.liquidityPool
+            ))}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
+          <p className="text-xs font-medium text-gray-500">Fees Collected</p>
+          <p className="mt-1 text-lg font-bold text-yellow-400">
+            {formatSol(lamportsToSol(market.feesCollected || 0))}
           </p>
         </div>
         <div className="rounded-2xl border border-surface-50/50 bg-surface-300 p-4 text-center">
@@ -179,21 +193,55 @@ export default function MarketDetailPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500">Liquidity Pool</dt>
-            <dd className="mt-1 text-sm font-medium text-white">
-              {formatSol(lamportsToSol(market.liquidityPool))}
+            <dt className="text-xs text-gray-500">Market Status</dt>
+            <dd className="mt-1">
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                market.status === "active" || !market.status
+                  ? "bg-green-500/15 text-green-400"
+                  : market.status === "funding"
+                  ? "bg-blue-500/15 text-blue-400"
+                  : market.status === "resolved"
+                  ? "bg-gray-500/15 text-gray-400"
+                  : "bg-yellow-500/15 text-yellow-400"
+              }`}>
+                {market.status === "active" ? "Active - Trading Open" :
+                 market.status === "funding" ? "Funding - Awaiting Liquidity" :
+                 market.status === "resolved" ? "Resolved" :
+                 (market.status || "active").toUpperCase()}
+              </span>
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500">YES Shares</dt>
-            <dd className="mt-1 text-sm font-medium text-white">
-              {market.yesShares.toLocaleString()}
+            <dt className="text-xs text-gray-500">YES Pool</dt>
+            <dd className="mt-1 text-sm font-medium text-green-400">
+              {formatSol(lamportsToSol(market.yesPool || market.liquidityPool * market.yesPrice))}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500">NO Shares</dt>
+            <dt className="text-xs text-gray-500">NO Pool</dt>
+            <dd className="mt-1 text-sm font-medium text-red-400">
+              {formatSol(lamportsToSol(market.noPool || market.liquidityPool * market.noPrice))}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-gray-500">Protocol Fee</dt>
+            <dd className="mt-1 text-sm font-medium text-yellow-400">
+              2% per trade
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-gray-500">Creator Liquidity</dt>
             <dd className="mt-1 text-sm font-medium text-white">
-              {market.noShares.toLocaleString()}
+              {market.creatorLiquidityWithdrawn ? (
+                <span className="text-gray-500">Withdrawn</span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  Locked until resolution
+                </span>
+              )}
             </dd>
           </div>
         </dl>

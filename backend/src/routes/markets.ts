@@ -2,10 +2,13 @@
  * Profitic Backend — Markets REST API Routes
  *
  * Endpoints:
- *   GET /markets             List markets (paginated, filterable by status/search)
- *   GET /markets/:id         Get a single market by on-chain ID
- *   GET /markets/:id/trades  Get trade history for a market
- *   GET /markets/:id/evidence Get evidence logs for a market
+ *   GET /markets               List markets (paginated, filterable by status/search)
+ *   GET /markets/trending      Get trending markets by volume
+ *   GET /markets/:id           Get a single market by on-chain ID
+ *   GET /markets/:id/trades    Get trade history for a market
+ *   GET /markets/:id/evidence  Get evidence logs for a market
+ *   GET /markets/:id/liquidity Get liquidity provisions for a market
+ *   GET /treasury              Get treasury fee summary
  */
 
 import { Router, Request, Response } from "express";
@@ -16,21 +19,16 @@ import {
   getEvidenceByMarket,
   getCommentsByMarket,
   insertComment,
+  getLiquidityProvisions,
+  getTrendingMarkets,
+  getTreasurySummary,
 } from "../services/database";
-import { MarketStatus, PaginatedResponse, Market, Trade, Comment, MarketDetailResponse } from "../models/types";
+import { MarketStatus, PaginatedResponse, Market, Trade, Comment, MarketDetailResponse, LiquidityProvision } from "../models/types";
 
 const router = Router();
 
 // ---------------------------------------------------------------------------
 // GET /markets
-// ---------------------------------------------------------------------------
-// Query params:
-//   status  — filter by market status (active, proposed_resolution, resolved, cancelled)
-//   search  — full-text search on the market question
-//   page    — page number (default 1)
-//   limit   — results per page (default 20, max 100)
-//
-// Response: PaginatedResponse<Market>
 // ---------------------------------------------------------------------------
 router.get("/", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -39,7 +37,6 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
 
-    // Validate the status filter if provided.
     if (status && !Object.values(MarketStatus).includes(status as MarketStatus)) {
       res.status(400).json({
         error: `Invalid status filter. Must be one of: ${Object.values(MarketStatus).join(", ")}`,
@@ -54,13 +51,7 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
       limit,
     });
 
-    const response: PaginatedResponse<Market> = {
-      data,
-      total,
-      page,
-      limit,
-    };
-
+    const response: PaginatedResponse<Market> = { data, total, page, limit };
     res.json(response);
   } catch (err) {
     console.error("[markets] GET /markets error:", err);
@@ -69,12 +60,21 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /markets/:id
+// GET /markets/trending
 // ---------------------------------------------------------------------------
-// Path params:
-//   id — on-chain market ID (integer)
-//
-// Response: MarketDetailResponse (market + 10 most recent trades)
+router.get("/trending", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string, 10) || 10));
+    const markets = await getTrendingMarkets(limit);
+    res.json({ data: markets });
+  } catch (err) {
+    console.error("[markets] GET /markets/trending error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /markets/:id
 // ---------------------------------------------------------------------------
 router.get("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -90,14 +90,9 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Include the 10 most recent trades for this market in the detail response.
     const { data: recent_trades } = await getTradesByMarket(id, { limit: 10 });
 
-    const response: MarketDetailResponse = {
-      market,
-      recent_trades,
-    };
-
+    const response: MarketDetailResponse = { market, recent_trades };
     res.json(response);
   } catch (err) {
     console.error(`[markets] GET /markets/${req.params.id} error:`, err);
@@ -108,15 +103,6 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
 // ---------------------------------------------------------------------------
 // GET /markets/:id/trades
 // ---------------------------------------------------------------------------
-// Path params:
-//   id — on-chain market ID
-//
-// Query params:
-//   page  — page number (default 1)
-//   limit — results per page (default 50, max 200)
-//
-// Response: PaginatedResponse<Trade>
-// ---------------------------------------------------------------------------
 router.get("/:id/trades", async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -125,7 +111,6 @@ router.get("/:id/trades", async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Verify the market exists before querying trades.
     const market = await getMarketById(id);
     if (!market) {
       res.status(404).json({ error: "Market not found" });
@@ -137,13 +122,7 @@ router.get("/:id/trades", async (req: Request, res: Response): Promise<void> => 
 
     const { data, total } = await getTradesByMarket(id, { page, limit });
 
-    const response: PaginatedResponse<Trade> = {
-      data,
-      total,
-      page,
-      limit,
-    };
-
+    const response: PaginatedResponse<Trade> = { data, total, page, limit };
     res.json(response);
   } catch (err) {
     console.error(`[markets] GET /markets/${req.params.id}/trades error:`, err);
@@ -153,11 +132,6 @@ router.get("/:id/trades", async (req: Request, res: Response): Promise<void> => 
 
 // ---------------------------------------------------------------------------
 // GET /markets/:id/evidence
-// ---------------------------------------------------------------------------
-// Path params:
-//   id — on-chain market ID
-//
-// Response: { data: EvidenceLog[] }
 // ---------------------------------------------------------------------------
 router.get("/:id/evidence", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -177,6 +151,43 @@ router.get("/:id/evidence", async (req: Request, res: Response): Promise<void> =
     res.json({ data: evidence });
   } catch (err) {
     console.error(`[markets] GET /markets/${req.params.id}/evidence error:`, err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /markets/:id/liquidity
+// ---------------------------------------------------------------------------
+router.get("/:id/liquidity", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Market ID must be an integer" });
+      return;
+    }
+
+    const market = await getMarketById(id);
+    if (!market) {
+      res.status(404).json({ error: "Market not found" });
+      return;
+    }
+
+    const provisions = await getLiquidityProvisions(id);
+    const totalLiquidity = (BigInt(market.yes_pool) + BigInt(market.no_pool)).toString();
+
+    res.json({
+      market_id: id,
+      total_liquidity: totalLiquidity,
+      yes_pool: market.yes_pool,
+      no_pool: market.no_pool,
+      creator_yes_liquidity: market.creator_yes_liquidity,
+      creator_no_liquidity: market.creator_no_liquidity,
+      creator_liquidity_withdrawn: market.creator_liquidity_withdrawn,
+      fees_collected: market.fees_collected,
+      provisions,
+    });
+  } catch (err) {
+    console.error(`[markets] GET /markets/${req.params.id}/liquidity error:`, err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
