@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Market } from "@/types";
 import { API_URL } from "@/lib/constants";
-import { getDemoMarkets } from "@/lib/demoData";
+import { getDemoMarketsLive } from "@/lib/demoData";
 
 interface UseMarketsOptions {
   filter?: string;
@@ -46,8 +46,9 @@ export function useMarkets(options: UseMarketsOptions = {}): UseMarketsReturn {
     } catch (err) {
       console.error("Error fetching markets:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch markets");
-      // Set demo data for development when API is unavailable
-      setMarkets(getDemoMarkets());
+      // Set demo data with live crypto prices
+      const demoMarkets = await getDemoMarketsLive();
+      setMarkets(demoMarkets);
     } finally {
       setLoading(false);
     }

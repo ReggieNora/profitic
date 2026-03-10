@@ -1,4 +1,87 @@
-import { Market, Trade } from "@/types";
+import { Market, Trade, CryptoAsset } from "@/types";
+
+// ── Live price fetching for demo start prices ──
+
+const COINGECKO_IDS: Record<string, string> = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  SOL: "solana",
+};
+
+// Module-level cache so we only fetch once per session
+let livePriceCache: Record<string, number> = {};
+let livePriceFetched = false;
+
+async function fetchLivePrices(): Promise<Record<string, number>> {
+  if (livePriceFetched) return livePriceCache;
+
+  try {
+    const ids = Object.values(COINGECKO_IDS).join(",");
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
+    const data = await res.json();
+
+    for (const [symbol, cgId] of Object.entries(COINGECKO_IDS)) {
+      const price = data?.[cgId]?.usd;
+      if (typeof price === "number" && price > 0) {
+        livePriceCache[symbol] = price;
+      }
+    }
+    livePriceFetched = true;
+  } catch {
+    // Fallback prices if CoinGecko is unreachable
+    if (!livePriceCache.BTC) livePriceCache.BTC = 84750;
+    if (!livePriceCache.ETH) livePriceCache.ETH = 2185;
+    if (!livePriceCache.SOL) livePriceCache.SOL = 128.5;
+    livePriceFetched = true;
+  }
+
+  return livePriceCache;
+}
+
+/**
+ * Get demo markets with live crypto prices as start prices.
+ * Call this from hooks — it fetches prices once, then uses cache.
+ */
+export async function getDemoMarketsLive(): Promise<Market[]> {
+  const prices = await fetchLivePrices();
+  const markets = getDemoMarkets();
+
+  // Patch crypto markets with live start prices and dynamic questions
+  return markets.map((m) => {
+    if (m.marketType !== "crypto_updown" || !m.cryptoAsset) return m;
+
+    const livePrice = prices[m.cryptoAsset];
+    if (!livePrice) return m;
+
+    const formatted = livePrice.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    if (m.cryptoSubtype === "up_down") {
+      return {
+        ...m,
+        startPrice: livePrice,
+        question: `${m.cryptoAsset} Up or Down in ${m.cryptoTimeframe === "5m" ? "5 Minutes" : m.cryptoTimeframe === "15m" ? "15 Minutes" : m.cryptoTimeframe === "1h" ? "1 Hour" : m.cryptoTimeframe === "4h" ? "4 Hours" : "24 Hours"}?`,
+        description: `Will ${m.cryptoAsset === "BTC" ? "Bitcoin" : m.cryptoAsset === "ETH" ? "Ethereum" : "Solana"} price go up or down from $${formatted} within ${m.cryptoTimeframe}? Resolved automatically via Pyth Network oracle.`,
+      };
+    } else {
+      // price_target — set start to live, keep strike as-is
+      const strikePrice = m.strikePrice || Math.round(livePrice * 1.005);
+      return {
+        ...m,
+        startPrice: livePrice,
+        strikePrice,
+        question: `Will ${m.cryptoAsset} be above $${strikePrice.toLocaleString()} in ${m.cryptoTimeframe === "1h" ? "1 Hour" : m.cryptoTimeframe === "4h" ? "4 Hours" : m.cryptoTimeframe}?`,
+        description: `Will ${m.cryptoAsset === "BTC" ? "Bitcoin" : m.cryptoAsset === "ETH" ? "Ethereum" : "Solana"} exceed $${strikePrice.toLocaleString()} within ${m.cryptoTimeframe}? Current price: $${formatted}. Resolved automatically via Pyth Network oracle.`,
+      };
+    }
+  });
+}
 
 function withAmmDefaults(m: Market): Market {
   const yesPool = Math.round(m.liquidityPool * m.yesPrice);
@@ -576,6 +659,11 @@ export function getDemoMarkets(): Market[] {
 
 export function getDemoMarketById(id: string): Market | null {
   const markets = getDemoMarkets();
+  return markets.find((m) => m.id === id) || null;
+}
+
+export async function getDemoMarketByIdLive(id: string): Promise<Market | null> {
+  const markets = await getDemoMarketsLive();
   return markets.find((m) => m.id === id) || null;
 }
 

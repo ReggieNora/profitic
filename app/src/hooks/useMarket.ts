@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Market, Trade } from "@/types";
 import { API_URL } from "@/lib/constants";
-import { getDemoMarketById, getDemoTrades } from "@/lib/demoData";
+import { getDemoMarketByIdLive, getDemoTrades } from "@/lib/demoData";
 
 interface UseMarketReturn {
   market: Market | null;
@@ -42,8 +42,9 @@ export function useMarket(id: string): UseMarketReturn {
     } catch (err) {
       console.error("Error fetching market:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch market");
-      // Demo fallback — look up the correct market from shared demo data
-      setMarket(getDemoMarketById(id));
+      // Demo fallback with live prices
+      const demoMarket = await getDemoMarketByIdLive(id);
+      setMarket(demoMarket);
       setTrades(getDemoTrades(id));
     } finally {
       setLoading(false);
