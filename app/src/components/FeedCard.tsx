@@ -305,7 +305,7 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
             }`}
           >
             {market.resolved
-              ? `Resolved ${market.outcome.toUpperCase()}`
+              ? `Resolved ${market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down" ? (market.outcome === "yes" ? "UP" : "DOWN") : market.outcome.toUpperCase()}`
               : timeLeft === "Ended"
               ? "Awaiting Resolution"
               : timeLeft}
@@ -319,7 +319,9 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
           </span>
           <span className="text-3xl font-bold text-white/50 sm:text-4xl">%</span>
           <span className={`ml-2 text-lg font-semibold sm:text-xl ${yesPercent >= noPercent ? "text-green-400" : "text-red-400"}`}>
-            {yesPercent >= noPercent ? "YES" : "NO"}
+            {market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down"
+              ? (yesPercent >= noPercent ? "UP" : "DOWN")
+              : (yesPercent >= noPercent ? "YES" : "NO")}
           </span>
         </div>
 
@@ -351,8 +353,8 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
             )}
           </div>
           <div className="mt-2 flex justify-between text-xs font-medium">
-            <span className="text-green-400">Yes {yesPercent}%</span>
-            <span className="text-red-400">No {noPercent}%</span>
+            <span className="text-green-400">{market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down" ? "Up" : "Yes"} {yesPercent}%</span>
+            <span className="text-red-400">{market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down" ? "Down" : "No"} {noPercent}%</span>
           </div>
         </div>
 

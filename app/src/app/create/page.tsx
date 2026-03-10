@@ -16,33 +16,9 @@ import {
   CRYPTO_TIMEFRAMES,
 } from "@/types";
 import { MARKET_CATEGORIES } from "@/lib/constants";
+import { useCryptoPrice } from "@/hooks/useCryptoPrice";
 
-const CATEGORY_OPTIONS = MARKET_CATEGORIES.filter((c) => c.value !== "all") as readonly { label: string; value: string }[];
-
-// ---------------------------------------------------------------------------
-// Simulated live prices (in production, fetch from Pyth/CoinGecko)
-// ---------------------------------------------------------------------------
-const SIMULATED_PRICES: Record<CryptoAsset, number> = {
-  BTC: 84750,
-  ETH: 2185,
-  SOL: 128.5,
-};
-
-function useLivePrice(asset: CryptoAsset) {
-  const [price, setPrice] = useState(SIMULATED_PRICES[asset]);
-  useEffect(() => {
-    setPrice(SIMULATED_PRICES[asset]);
-    // Simulate small price ticks
-    const interval = setInterval(() => {
-      setPrice((prev) => {
-        const change = prev * (Math.random() * 0.002 - 0.001);
-        return parseFloat((prev + change).toFixed(2));
-      });
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [asset]);
-  return price;
-}
+const CATEGORY_OPTIONS = MARKET_CATEGORIES.filter((c) => c.value !== "all" && c.value !== "updown") as readonly { label: string; value: string }[];
 
 // ---------------------------------------------------------------------------
 // Market Type Selector
@@ -131,7 +107,7 @@ function CryptoUpDownForm() {
     initialNoLiquidity: "500",
   });
 
-  const livePrice = useLivePrice(form.asset);
+  const { price: livePrice, loading: priceLoading, source: priceSource } = useCryptoPrice(form.asset);
   const assetMeta = CRYPTO_ASSETS.find((a) => a.value === form.asset)!;
   const timeframeMeta = CRYPTO_TIMEFRAMES.find((t) => t.value === form.timeframe)!;
 
@@ -212,7 +188,9 @@ function CryptoUpDownForm() {
               </div>
               <p className="mt-1 text-xs font-semibold text-gray-300">{asset.label}</p>
               <p className="mt-0.5 text-[11px] font-medium tabular-nums text-gray-500">
-                ${SIMULATED_PRICES[asset.value].toLocaleString()}
+                {livePrice > 0 && form.asset === asset.value
+                  ? `$${livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : "..."}
               </p>
             </button>
           ))}
@@ -225,14 +203,21 @@ function CryptoUpDownForm() {
           {assetMeta.icon}
         </div>
         <div className="flex-1">
-          <p className="text-xs text-gray-500">Live {assetMeta.label} Price</p>
-          <p className="text-xl font-bold tabular-nums text-white">
-            ${livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
+          <p className="text-xs text-gray-500">{assetMeta.label} Price</p>
+          {priceLoading && livePrice === 0 ? (
+            <div className="mt-1 h-6 w-32 animate-pulse rounded bg-surface-400" />
+          ) : (
+            <p className="text-xl font-bold tabular-nums text-white">
+              ${livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-[10px] font-bold text-green-400">LIVE</span>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-[10px] font-bold text-green-400">LIVE</span>
+          </div>
+          <span className="text-[9px] text-gray-600">{priceSource === "coingecko" ? "CoinGecko" : "Cached"}</span>
         </div>
       </div>
 

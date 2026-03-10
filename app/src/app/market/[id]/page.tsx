@@ -301,7 +301,9 @@ export default function MarketDetailPage() {
                             : "text-red-400"
                         }`}
                       >
-                        {trade.outcome.toUpperCase()}
+                        {market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down"
+                          ? (trade.outcome === "yes" ? "UP" : "DOWN")
+                          : trade.outcome.toUpperCase()}
                       </span>
                     </td>
                     <td className="py-3 pr-4 text-right font-mono text-xs">

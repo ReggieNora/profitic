@@ -77,7 +77,7 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
             }`}
           >
             {isResolved
-              ? `Resolved ${market.outcome.toUpperCase()}`
+              ? `Resolved ${isCrypto && isUpDown ? (market.outcome === "yes" ? "UP" : "DOWN") : market.outcome.toUpperCase()}`
               : timeLeft === "Ended"
               ? "Awaiting Resolution"
               : `${timeLeft} left`}

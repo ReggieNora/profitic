@@ -91,7 +91,7 @@ export default function CryptoMarketCard({ market }: CryptoMarketCardProps) {
         <div className="mb-4 flex items-center gap-2">
           {isResolved ? (
             <span className="inline-flex items-center rounded-full bg-gray-500/15 px-2.5 py-1 text-[11px] font-semibold text-gray-400">
-              Resolved {market.outcome.toUpperCase()}
+              Resolved {isUpDown ? (market.outcome === "yes" ? "UP" : "DOWN") : market.outcome.toUpperCase()}
             </span>
           ) : isExpired ? (
             <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2.5 py-1 text-[11px] font-semibold text-yellow-400">
