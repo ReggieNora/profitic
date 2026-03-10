@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useMarket } from "@/hooks/useMarket";
 import TradePanel from "@/components/TradePanel";
 import BondingCurveChart from "@/components/BondingCurveChart";
+import CryptoPriceChart from "@/components/CryptoPriceChart";
 import CommentSection from "@/components/CommentSection";
 import { formatProbability, lamportsToSol, formatSol } from "@/lib/bondingCurve";
 import { Trade, TradeFormData } from "@/types";
@@ -195,10 +196,14 @@ export default function MarketDetailPage() {
       {/* Chart + Trade Panel */}
       <div className="mb-6 grid gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2 animate-fade-up" style={{ animationDelay: "180ms" }}>
-          <BondingCurveChart
-            yesShares={market.yesShares}
-            noShares={market.noShares}
-          />
+          {isCryptoUpDown ? (
+            <CryptoPriceChart market={market} />
+          ) : (
+            <BondingCurveChart
+              yesShares={market.yesShares}
+              noShares={market.noShares}
+            />
+          )}
         </div>
         <div className="animate-fade-up" style={{ animationDelay: "240ms" }}>
           <TradePanel market={market} onTrade={handleTrade} />
