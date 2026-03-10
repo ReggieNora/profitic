@@ -78,6 +78,10 @@ export default function MarketDetailPage() {
 
   const yesPercent = Math.round(market.yesPrice * 100);
   const noPercent = Math.round(market.noPrice * 100);
+  const isCryptoUpDown = market.marketType === "crypto_updown";
+  const isUpDown = isCryptoUpDown && market.cryptoSubtype === "up_down";
+  const yesLabel = isUpDown ? "Up" : "Yes";
+  const noLabel = isUpDown ? "Down" : "No";
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6 pb-24 sm:max-w-7xl sm:px-6 md:pb-6 lg:px-8">
@@ -114,16 +118,44 @@ export default function MarketDetailPage() {
         <p className="mt-2 text-sm text-gray-400 leading-relaxed">{market.description}</p>
       </div>
 
+      {/* Crypto market info banner */}
+      {isCryptoUpDown && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 animate-fade-up" style={{ animationDelay: "40ms" }}>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-500/15 px-3 py-1 text-xs font-bold text-primary-400">
+            {market.cryptoAsset} {market.cryptoSubtype === "up_down" ? "Up/Down" : "Price Target"}
+          </span>
+          {market.cryptoTimeframe && (
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-white/70">
+              {market.cryptoTimeframe}
+            </span>
+          )}
+          {market.startPrice && (
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/60">
+              Start: ${market.startPrice.toLocaleString()}
+            </span>
+          )}
+          {market.strikePrice && (
+            <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-400">
+              Target: ${market.strikePrice.toLocaleString()}
+            </span>
+          )}
+          <span className="ml-auto flex items-center gap-1 rounded-full bg-primary-500/10 px-2 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary-400" />
+            <span className="text-[9px] font-bold text-primary-400">{market.oracleSource || "Pyth"}</span>
+          </span>
+        </div>
+      )}
+
       {/* Big probability display - mobile first */}
       <div className="mb-6 flex gap-3 animate-fade-up" style={{ animationDelay: "60ms" }}>
         <div className="flex-1 overflow-hidden rounded-2xl border border-green-500/20 bg-green-500/5 p-4 text-center">
-          <div className="text-xs font-semibold uppercase tracking-wider text-green-400/70">Yes</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-green-400/70">{yesLabel}</div>
           <div className="mt-1 text-3xl font-black tabular-nums text-green-400">
             {yesPercent}<span className="text-lg font-bold">%</span>
           </div>
         </div>
         <div className="flex-1 overflow-hidden rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-center">
-          <div className="text-xs font-semibold uppercase tracking-wider text-red-400/70">No</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-red-400/70">{noLabel}</div>
           <div className="mt-1 text-3xl font-black tabular-nums text-red-400">
             {noPercent}<span className="text-lg font-bold">%</span>
           </div>
@@ -212,13 +244,13 @@ export default function MarketDetailPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500">YES Pool</dt>
+            <dt className="text-xs text-gray-500">{yesLabel.toUpperCase()} Pool</dt>
             <dd className="mt-1 text-sm font-medium text-green-400">
               {formatSol(lamportsToSol(market.yesPool || market.liquidityPool * market.yesPrice))}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-500">NO Pool</dt>
+            <dt className="text-xs text-gray-500">{noLabel.toUpperCase()} Pool</dt>
             <dd className="mt-1 text-sm font-medium text-red-400">
               {formatSol(lamportsToSol(market.noPool || market.liquidityPool * market.noPrice))}
             </dd>
