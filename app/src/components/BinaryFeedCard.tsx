@@ -205,20 +205,15 @@ export default function BinaryFeedCard({
         )}
         {/* Overlay gradient for readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
+        {/* Watermark logo */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.04] pointer-events-none">
+          <CryptoLogo asset={round.asset} size={400} />
+        </div>
       </div>
 
-      {/* Top bar — asset info + timer */}
+      {/* Top bar — timer only (no logo/name, moved to center) */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between p-5 pt-6">
-        <div className="flex items-center gap-3">
-          <CryptoLogo asset={round.asset} size={44} />
-          <div>
-            <h2 className="text-xl font-black text-white drop-shadow-lg">{assetMeta.label}</h2>
-            <p className="text-xs text-white/60">
-              Round #{round.roundNumber} &middot; 5 min
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-1.5">
+        <div className="flex items-center gap-2">
           <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase backdrop-blur-sm ${
             round.phase === "betting" ? "bg-green-500/20 text-green-400" :
             round.phase === "locked" ? "bg-yellow-500/20 text-yellow-400" :
@@ -227,24 +222,30 @@ export default function BinaryFeedCard({
           }`}>
             {round.phase === "betting" ? "OPEN" : round.phase.toUpperCase()}
           </span>
-          {round.phase !== "complete" && (
-            <div className="flex items-center gap-2">
-              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-white/10 backdrop-blur-sm">
-                <div
-                  className="h-full rounded-full bg-white/60 transition-all duration-1000"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-              <span className="text-lg font-black tabular-nums text-white drop-shadow-lg">
-                {countdown}
-              </span>
-            </div>
-          )}
+          <span className="text-xs text-white/40">
+            Round #{round.roundNumber} &middot; 5 min
+          </span>
         </div>
+        {round.phase !== "complete" && (
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-white/10 backdrop-blur-sm">
+              <div
+                className="h-full rounded-full bg-white/60 transition-all duration-1000"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            <span className="text-lg font-black tabular-nums text-white drop-shadow-lg">
+              {countdown}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Center — large live price */}
+      {/* Center — asset name + large live price */}
       <div className="absolute left-0 right-0 top-1/3 z-10 flex flex-col items-center -translate-y-1/2">
+        <h2 className="mb-1 text-lg font-black uppercase tracking-widest text-white/70 drop-shadow-lg sm:text-xl">
+          {assetMeta.label}
+        </h2>
         <span className="text-4xl font-black tabular-nums text-white drop-shadow-lg sm:text-5xl">
           ${displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
