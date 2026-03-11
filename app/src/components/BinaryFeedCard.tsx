@@ -52,6 +52,9 @@ export default function BinaryFeedCard({
   const [likeCount] = useState(() => 80 + Math.floor(Math.random() * 200));
   const [shared, setShared] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
+  const [floatingBets, setFloatingBets] = useState<
+    { id: string; x: number; y: number; side: "up" | "down"; amount: string }[]
+  >([]);
   const lastApiPrice = useRef(0);
   const driftRef = useRef(0);
   const lastTapRef = useRef(0);
@@ -132,6 +135,25 @@ export default function BinaryFeedCard({
     return () => clearInterval(interval);
   }, [currentPrice, round.asset, round.id]);
 
+  // Floating bet popups — random bets appear on the chart and fade out
+  useEffect(() => {
+    const AMOUNTS = ["0.1", "0.25", "0.5", "1", "2", "5", "0.3", "0.75", "1.5", "3"];
+    const spawn = () => {
+      const side = Math.random() < 0.55 ? "up" as const : "down" as const;
+      const amount = AMOUNTS[Math.floor(Math.random() * AMOUNTS.length)];
+      const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+      const x = 10 + Math.random() * 70; // 10-80% from left
+      const y = 15 + Math.random() * 50; // 15-65% from top
+      setFloatingBets((prev) => [...prev.slice(-8), { id, x, y, side, amount }]);
+      // Auto-remove after animation
+      setTimeout(() => {
+        setFloatingBets((prev) => prev.filter((b) => b.id !== id));
+      }, 2200);
+    };
+    const interval = setInterval(spawn, 1800 + Math.random() * 2400);
+    return () => clearInterval(interval);
+  }, [round.id]);
+
   const prices = priceHistory.map((p) => p.price);
   prices.push(round.startPrice);
   const minP = Math.min(...prices);
@@ -157,21 +179,35 @@ export default function BinaryFeedCard({
   }, [liked]);
 
   const handleShare = async () => {
+    const url = window.location.origin;
     try {
       if (navigator.share) {
         await navigator.share({
           title: `${assetMeta.label} Binary Market`,
           text: `${round.asset} is ${isAboveStart ? "UP" : "DOWN"} ${Math.abs(priceChangePct).toFixed(3)}%`,
-          url: window.location.origin,
+          url,
         });
-      } else {
-        await navigator.clipboard.writeText(window.location.origin);
-        setShared(true);
-        setTimeout(() => setShared(false), 2000);
+        return;
       }
     } catch {
-      // cancelled
+      // share cancelled or unavailable
     }
+    // Clipboard fallback (works in more contexts)
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Manual fallback for non-secure contexts
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setShared(true);
+    setTimeout(() => setShared(false), 2000);
   };
 
   const progressPct = timerPct;
@@ -221,7 +257,7 @@ export default function BinaryFeedCard({
       </div>
 
       {/* Background chart — fills entire card, above watermark */}
-      <div className="absolute inset-0 z-[1]">
+      <div className="absolute inset-0 z-[1] pointer-events-none">
         {priceHistory.length >= 2 ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={priceHistory} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
@@ -271,6 +307,25 @@ export default function BinaryFeedCard({
         )}
         {/* Overlay gradient for readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
+      </div>
+
+      {/* Floating bet popups */}
+      <div className="absolute inset-0 z-[2] pointer-events-none overflow-hidden">
+        {floatingBets.map((fb) => (
+          <div
+            key={fb.id}
+            className="absolute animate-float-bet"
+            style={{ left: `${fb.x}%`, top: `${fb.y}%` }}
+          >
+            <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold shadow-lg ${
+              fb.side === "up"
+                ? "bg-green-500/20 text-green-400 shadow-green-500/10"
+                : "bg-red-500/20 text-red-400 shadow-red-500/10"
+            }`}>
+              {fb.side === "up" ? "↑" : "↓"} {fb.amount} SOL
+            </span>
+          </div>
+        ))}
       </div>
 
       {/* Top bar — timer only (no logo/name, moved to center) */}

@@ -275,3 +275,15 @@ body {
 .animate-lock-flash {
   animation: lock-flash 0.6s ease-out forwards;
 }
+
+/* Floating bet popup — fades in, drifts up, fades out */
+@keyframes float-bet {
+  0% { opacity: 0; transform: translateY(8px) scale(0.8); }
+  15% { opacity: 1; transform: translateY(0) scale(1); }
+  75% { opacity: 0.8; transform: translateY(-12px) scale(1); }
+  100% { opacity: 0; transform: translateY(-24px) scale(0.9); }
+}
+
+.animate-float-bet {
+  animation: float-bet 2.2s ease-out forwards;
+}
