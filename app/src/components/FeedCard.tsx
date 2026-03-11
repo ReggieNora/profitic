@@ -461,7 +461,7 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
       </div>
 
       {/* Right side action bar (TikTok-style) */}
-      <div className="absolute bottom-36 right-3 flex flex-col items-center gap-5 sm:right-5">
+      <div className="absolute bottom-36 right-3 z-20 flex flex-col items-center gap-5 sm:right-5">
         {/* Creator avatar */}
         <Link
           href={`/profile/${market.creator}`}

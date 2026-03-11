@@ -387,7 +387,7 @@ export default function BinaryFeedCard({
       </div>
 
       {/* Right sidebar — TikTok-style action buttons */}
-      <div className="absolute bottom-44 right-3 z-10 flex flex-col items-center gap-5 sm:right-5">
+      <div className="absolute bottom-44 right-3 z-20 flex flex-col items-center gap-5 sm:right-5">
         {/* Asset avatar */}
         <div className="relative">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-primary ring-2 ring-black/40 transition-transform active:scale-90">
