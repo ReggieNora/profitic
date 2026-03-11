@@ -33,6 +33,7 @@ export default function Navbar() {
         <div className="hidden items-center gap-1 md:flex">
           {[
             { href: "/", label: "Home" },
+            { href: "/binaries", label: "Binaries" },
             { href: "/create", label: "Create" },
             { href: "/profile", label: "Profile" },
             ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),

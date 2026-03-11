@@ -526,7 +526,14 @@ export function getDemoMarkets(): Market[] {
       resolved: false,
       createdAt: now - 86400 * 1,
     }),
-    // ── Crypto Up/Down Markets ──
+  ];
+}
+
+// Crypto Up/Down demo markets kept for reference but removed from main feed.
+// Binary markets are now platform-controlled via the /binaries page.
+function _unusedCryptoDefaults() {
+  const now = Math.floor(Date.now() / 1000);
+  return [
     withCryptoDefaults({
       id: "demo-crypto-1",
       publicKey: "DemoC1111111111111111111111111111111111111111",

@@ -19,7 +19,6 @@ export const ADMIN_WALLETS = [
 
 export const MARKET_CATEGORIES = [
   { label: "All", value: "all" },
-  { label: "Up/Down", value: "updown" },
   { label: "Crypto", value: "crypto" },
   { label: "Finance", value: "finance" },
   { label: "Politics", value: "politics" },

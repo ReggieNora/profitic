@@ -18,7 +18,7 @@ import {
 import { MARKET_CATEGORIES } from "@/lib/constants";
 import { useCryptoPrice } from "@/hooks/useCryptoPrice";
 
-const CATEGORY_OPTIONS = MARKET_CATEGORIES.filter((c) => c.value !== "all" && c.value !== "updown") as readonly { label: string; value: string }[];
+const CATEGORY_OPTIONS = MARKET_CATEGORIES.filter((c) => c.value !== "all") as readonly { label: string; value: string }[];
 
 // ---------------------------------------------------------------------------
 // Market Type Selector
@@ -828,15 +828,24 @@ function PredictionMarketForm() {
 }
 
 // ---------------------------------------------------------------------------
-// Main Page
+// Main Page — prediction markets only (binaries are platform-controlled)
 // ---------------------------------------------------------------------------
 export default function CreateMarketPage() {
   const { connected } = useWallet();
-  const [marketType, setMarketType] = useState<MarketType>("prediction");
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6 pb-24 sm:max-w-2xl sm:px-6 md:pb-6">
-      <MarketTypeSelector selected={marketType} onChange={setMarketType} />
+      <div className="mb-6 animate-fade-up">
+        <h1 className="text-2xl font-bold text-white">Create Market</h1>
+        <p className="mt-1 text-sm text-gray-400">
+          Create a custom prediction market with any yes/no question.
+        </p>
+        <p className="mt-1 text-[11px] text-gray-600">
+          Looking for crypto price bets? Check out{" "}
+          <a href="/binaries" className="text-primary-400 hover:underline">Binaries</a>{" "}
+          for live 5-minute rounds.
+        </p>
+      </div>
 
       {!connected ? (
         <div className="rounded-2xl border border-surface-50/50 bg-surface-300 py-16 text-center animate-fade-up">
@@ -860,10 +869,8 @@ export default function CreateMarketPage() {
           </p>
           <WalletMultiButton />
         </div>
-      ) : marketType === "prediction" ? (
-        <PredictionMarketForm />
       ) : (
-        <CryptoUpDownForm />
+        <PredictionMarketForm />
       )}
     </div>
   );

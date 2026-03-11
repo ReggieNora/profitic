@@ -135,3 +135,40 @@ export interface Comment {
 // Protocol constants
 export const PROTOCOL_FEE_PERCENT = 2;
 export const PROTOCOL_FEE_BPS = 200;
+
+// ── Binary Round Types (platform-controlled rolling markets) ──
+
+export type BinaryRoundPhase = "betting" | "locked" | "resolving" | "complete";
+
+export interface BinaryRound {
+  id: string;
+  asset: CryptoAsset;
+  roundNumber: number;
+  phase: BinaryRoundPhase;
+  duration: number;         // round duration in seconds (e.g. 300 for 5m)
+  lockBuffer: number;       // seconds before end when betting locks (e.g. 30)
+  startTime: number;        // unix timestamp when round started
+  endTime: number;          // unix timestamp when round ends
+  lockTime: number;         // unix timestamp when betting locks
+  startPrice: number;       // asset price at round start (from Pyth oracle)
+  endPrice?: number;        // asset price at round end (from Pyth oracle)
+  outcome?: "up" | "down";  // determined after resolution
+  upPool: number;           // total SOL bet on UP (lamports)
+  downPool: number;         // total SOL bet on DOWN (lamports)
+  totalPool: number;        // upPool + downPool
+  feeCollected: number;     // protocol fee taken (lamports)
+  bets: BinaryBet[];        // individual bets placed this round
+}
+
+export interface BinaryBet {
+  id: string;
+  roundId: string;
+  wallet: string;
+  side: "up" | "down";
+  amount: number;           // lamports
+  timestamp: number;
+  payout?: number;          // set after resolution
+}
+
+export const BINARY_ROUND_DURATION = 300;  // 5 minutes
+export const BINARY_LOCK_BUFFER = 30;      // lock 30s before end

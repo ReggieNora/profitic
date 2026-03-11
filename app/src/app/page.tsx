@@ -16,9 +16,9 @@ export default function HomePage() {
 
   const filteredMarkets = useMemo(() => {
     let result = markets;
-    if (filter === "updown") {
-      result = result.filter((m) => m.marketType === "crypto_updown");
-    } else if (filter !== "all") {
+    // Filter out crypto_updown markets (moved to /binaries)
+    result = result.filter((m) => m.marketType !== "crypto_updown");
+    if (filter !== "all") {
       result = result.filter((m) => m.category === filter);
     }
     if (search.trim()) {
