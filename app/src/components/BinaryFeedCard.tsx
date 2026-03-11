@@ -42,6 +42,8 @@ export default function BinaryFeedCard({
   const [betAmount, setBetAmount] = useState("");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [countdown, setCountdown] = useState("");
+  const [timerPct, setTimerPct] = useState(0);
+  const [nearLock, setNearLock] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount] = useState(() => 80 + Math.floor(Math.random() * 200));
   const [shared, setShared] = useState(false);
@@ -66,7 +68,7 @@ export default function BinaryFeedCard({
   const downPayout = upSol > 0 ? (totalSol * 0.98) / downSol : 0;
   const upPct = totalSol > 0 ? (upSol / totalSol) * 100 : 50;
 
-  // Countdown
+  // Countdown + timer percentage + nearLock detection
   useEffect(() => {
     const tick = () => {
       const now = Math.floor(Date.now() / 1000);
@@ -74,11 +76,20 @@ export default function BinaryFeedCard({
       const m = Math.floor(remaining / 60);
       const s = remaining % 60;
       setCountdown(`${m}:${s.toString().padStart(2, "0")}`);
+
+      // Timer percentage: how much of the round has elapsed (0→100)
+      const elapsed = Math.max(0, now - round.startTime);
+      const pct = Math.min(100, (elapsed / round.duration) * 100);
+      setTimerPct(pct);
+
+      // Near lock: within BINARY_LOCK_BUFFER (30s) of lock time
+      const timeToLock = round.lockTime - now;
+      setNearLock(timeToLock > 0 && timeToLock <= 30);
     };
     tick();
-    const interval = setInterval(tick, 1000);
+    const interval = setInterval(tick, 200); // faster tick for smooth pulse
     return () => clearInterval(interval);
-  }, [round.endTime]);
+  }, [round.endTime, round.startTime, round.duration, round.lockTime]);
 
   // Reset on round change
   useEffect(() => {
@@ -149,8 +160,7 @@ export default function BinaryFeedCard({
     }
   };
 
-  const elapsed = Math.floor(Date.now() / 1000) - round.startTime;
-  const progressPct = Math.min(100, (elapsed / round.duration) * 100);
+  const progressPct = timerPct;
 
   return (
     <div className="relative flex h-full w-full flex-col justify-end overflow-hidden" onClick={handleDoubleTap}>
@@ -183,16 +193,17 @@ export default function BinaryFeedCard({
               <YAxis domain={[minP - pad, maxP + pad]} hide />
               <ReferenceLine
                 y={round.startPrice}
-                stroke="#ffffff"
-                strokeDasharray="8 6"
-                strokeWidth={2}
-                strokeOpacity={0.5}
+                stroke="#facc15"
+                strokeDasharray="10 6"
+                strokeWidth={2.5}
+                strokeOpacity={0.8}
                 label={{
-                  value: `Start $${round.startPrice.toLocaleString()}`,
-                  fill: "#ffffff99",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  position: "left",
+                  value: `▸ START $${round.startPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                  fill: "#facc15",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  position: "insideTopLeft",
+                  offset: 6,
                 }}
               />
               <Area
@@ -213,9 +224,23 @@ export default function BinaryFeedCard({
         )}
         {/* Overlay gradient for readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
-        {/* Watermark logo */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.12] pointer-events-none">
-          <CryptoLogo asset={round.asset} size={400} />
+        {/* Watermark logo with radial timer */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+          <div className="relative" style={{ width: 400, height: 400 }}>
+            {/* Logo at base opacity */}
+            <div className="absolute inset-0 opacity-[0.12]">
+              <CryptoLogo asset={round.asset} size={400} />
+            </div>
+            {/* Conic-gradient timer overlay — fills clockwise with dark tint */}
+            <div
+              className={`absolute inset-0 rounded-full transition-opacity ${nearLock ? "animate-timer-pulse" : ""}`}
+              style={{
+                background: `conic-gradient(from 0deg, rgba(0,0,0,0.55) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`,
+                maskImage: "radial-gradient(circle, black 48%, transparent 50%)",
+                WebkitMaskImage: "radial-gradient(circle, black 48%, transparent 50%)",
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -268,9 +293,13 @@ export default function BinaryFeedCard({
             {isAboveStart ? "↑" : "↓"} {priceChangePct >= 0 ? "+" : ""}{priceChangePct.toFixed(3)}%
           </span>
         </div>
-        <p className="mt-1 text-[10px] text-white/40">
-          Start: ${round.startPrice.toLocaleString()} &middot; Pyth Oracle
-        </p>
+        <div className="mt-2 flex items-center justify-center gap-1.5">
+          <span className="inline-block h-2 w-5 rounded-full border border-yellow-400/60 bg-yellow-400/20" />
+          <span className="text-[11px] font-bold text-yellow-400/80">
+            Start ${round.startPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          <span className="text-[10px] text-white/30">&middot; Pyth Oracle</span>
+        </div>
       </div>
 
       {/* Right sidebar — TikTok-style action buttons */}

@@ -255,3 +255,13 @@ body {
   animation: volume-bar 1.5s ease-in-out infinite;
   transform-origin: bottom;
 }
+
+/* Radial timer pulse — pulses each second near lock time */
+@keyframes timer-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-timer-pulse {
+  animation: timer-pulse 1s ease-in-out infinite;
+}
