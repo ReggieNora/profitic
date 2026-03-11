@@ -18,6 +18,15 @@ const DEMO_WALLETS = [
   "1kAf..iW7t", "0sEh..jX9u",
 ];
 
+// Fallback prices in case CoinGecko is slow/down
+const FALLBACK_PRICES: Record<CryptoAsset, number> = {
+  BTC: 69000,
+  ETH: 2400,
+  SOL: 85,
+};
+
+const ASSETS: CryptoAsset[] = ["BTC", "ETH", "SOL"];
+
 function randomWallet(): string {
   return DEMO_WALLETS[Math.floor(Math.random() * DEMO_WALLETS.length)];
 }
@@ -45,7 +54,7 @@ function createRound(
   startPrice: number,
   now: number
 ): BinaryRound {
-  return {
+  const round: BinaryRound = {
     id: `${asset}-round-${roundNumber}`,
     asset,
     roundNumber,
@@ -56,12 +65,29 @@ function createRound(
     endTime: now + BINARY_ROUND_DURATION,
     lockTime: now + BINARY_ROUND_DURATION - BINARY_LOCK_BUFFER,
     startPrice,
-    upPool: solToLamports(25 + Math.random() * 50), // seed with some demo liquidity
+    upPool: solToLamports(25 + Math.random() * 50),
     downPool: solToLamports(25 + Math.random() * 50),
-    totalPool: 0, // computed below
+    totalPool: 0,
     feeCollected: 0,
     bets: [],
   };
+  round.totalPool = round.upPool + round.downPool;
+  return round;
+}
+
+async function fetchAllPrices(): Promise<Record<CryptoAsset, number>> {
+  const results = await Promise.allSettled(
+    ASSETS.map((asset) => fetchCryptoPrice(asset))
+  );
+  const prices: Record<string, number> = {};
+  ASSETS.forEach((asset, i) => {
+    const result = results[i];
+    const price = result.status === "fulfilled" && result.value > 0
+      ? result.value
+      : 0;
+    prices[asset] = price;
+  });
+  return prices as Record<CryptoAsset, number>;
 }
 
 export function useBinaryRounds(): UseBinaryRoundsReturn {
@@ -79,44 +105,48 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
     ETH: 1,
     SOL: 1,
   });
+  // Use ref for livePrices inside the tick interval to avoid dependency issues
+  const livePricesRef = useRef(livePrices);
+  livePricesRef.current = livePrices;
 
-  // Initialize rounds with live prices
+  // Initialize rounds with live prices (parallel fetch)
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
     const init = async () => {
-      const assets: CryptoAsset[] = ["BTC", "ETH", "SOL"];
-      const prices: Record<string, number> = {};
-      const newRounds: Record<string, BinaryRound> = {} as Record<CryptoAsset, BinaryRound>;
+      const prices = await fetchAllPrices();
       const now = Math.floor(Date.now() / 1000);
+      const newRounds = {} as Record<CryptoAsset, BinaryRound>;
 
-      for (const asset of assets) {
-        const price = await fetchCryptoPrice(asset);
+      for (const asset of ASSETS) {
+        // Use fetched price, fall back to hardcoded if API failed
+        const price = prices[asset] > 0 ? prices[asset] : FALLBACK_PRICES[asset];
         prices[asset] = price;
-        const round = createRound(asset, 1, price, now);
-        round.totalPool = round.upPool + round.downPool;
-        newRounds[asset] = round;
+        newRounds[asset] = createRound(asset, 1, price, now);
       }
 
-      setLivePrices(prices as Record<CryptoAsset, number>);
-      setRounds(newRounds as Record<CryptoAsset, BinaryRound>);
+      setLivePrices(prices);
+      setRounds(newRounds);
     };
 
     init();
   }, []);
 
   // Tick: update phases, resolve rounds, start new ones, simulate bets
+  // No dependency on livePrices — uses ref instead to keep interval stable
   useEffect(() => {
     const interval = setInterval(async () => {
       const now = Math.floor(Date.now() / 1000);
 
-      // Fetch live prices
-      const assets: CryptoAsset[] = ["BTC", "ETH", "SOL"];
-      const newPrices = { ...livePrices };
-      for (const asset of assets) {
-        const p = await fetchCryptoPrice(asset);
-        if (p > 0) newPrices[asset] = p;
+      // Fetch live prices in parallel
+      const newPrices = await fetchAllPrices();
+      // Merge: keep previous price if new fetch returned 0
+      const currentPrices = livePricesRef.current;
+      for (const asset of ASSETS) {
+        if (newPrices[asset] <= 0) {
+          newPrices[asset] = currentPrices[asset];
+        }
       }
       setLivePrices(newPrices);
 
@@ -124,9 +154,16 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
         const updated = { ...prev };
         let changed = false;
 
-        for (const asset of assets) {
+        for (const asset of ASSETS) {
           const round = updated[asset];
           if (!round) continue;
+
+          // Update startPrice if it was 0 (API was slow on init)
+          if (round.startPrice === 0 && newPrices[asset] > 0) {
+            updated[asset] = { ...round, startPrice: newPrices[asset] };
+            changed = true;
+            continue;
+          }
 
           let newPhase: BinaryRoundPhase = round.phase;
 
@@ -141,7 +178,6 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
           }
 
           if (newPhase === "resolving" && round.phase !== "complete") {
-            // Resolve the round
             const endPrice = newPrices[asset] || round.startPrice;
             const outcome: "up" | "down" =
               endPrice >= round.startPrice ? "up" : "down";
@@ -156,7 +192,6 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
             };
             changed = true;
 
-            // Start next round after short delay
             const rn = roundNumbers.current[asset] + 1;
             roundNumbers.current[asset] = rn;
 
@@ -168,10 +203,9 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
                   newPrices[asset] || endPrice,
                   Math.floor(Date.now() / 1000)
                 );
-                nextRound.totalPool = nextRound.upPool + nextRound.downPool;
                 return { ...p, [asset]: nextRound };
               });
-            }, 3000); // 3 second pause between rounds
+            }, 3000);
           } else if (newPhase !== round.phase) {
             updated[asset] = { ...round, phase: newPhase };
             changed = true;
@@ -180,7 +214,7 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
           // Simulate random bets during betting phase
           if (
             round.phase === "betting" &&
-            Math.random() < 0.3 // ~30% chance each tick
+            Math.random() < 0.3
           ) {
             const side: "up" | "down" = Math.random() > 0.5 ? "up" : "down";
             const amount = solToLamports(randomBetAmount());
@@ -196,13 +230,10 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
             const r = updated[asset];
             updated[asset] = {
               ...r,
-              bets: [...r.bets.slice(-49), bet], // keep last 50
+              bets: [...r.bets.slice(-49), bet],
               upPool: r.upPool + (side === "up" ? amount : 0),
               downPool: r.downPool + (side === "down" ? amount : 0),
-              totalPool:
-                r.upPool +
-                r.downPool +
-                amount,
+              totalPool: r.upPool + r.downPool + amount,
             };
             changed = true;
           }
@@ -210,10 +241,10 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
 
         return changed ? updated : prev;
       });
-    }, 3000); // every 3 seconds
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, [livePrices]);
+  }, []); // stable interval — no livePrices dependency
 
   const placeBet = useCallback(
     (asset: CryptoAsset, side: "up" | "down", amount: number) => {
