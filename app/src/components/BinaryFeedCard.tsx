@@ -183,9 +183,17 @@ export default function BinaryFeedCard({
               <YAxis domain={[minP - pad, maxP + pad]} hide />
               <ReferenceLine
                 y={round.startPrice}
-                stroke={isAboveStart ? "#10b98140" : "#ef444440"}
+                stroke="#ffffff"
                 strokeDasharray="8 6"
-                strokeWidth={1.5}
+                strokeWidth={2}
+                strokeOpacity={0.5}
+                label={{
+                  value: `Start $${round.startPrice.toLocaleString()}`,
+                  fill: "#ffffff99",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  position: "left",
+                }}
               />
               <Area
                 type="monotone"
@@ -206,7 +214,7 @@ export default function BinaryFeedCard({
         {/* Overlay gradient for readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
         {/* Watermark logo */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.04] pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.12] pointer-events-none">
           <CryptoLogo asset={round.asset} size={400} />
         </div>
       </div>
