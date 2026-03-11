@@ -9,22 +9,21 @@ import { ADMIN_WALLETS } from "@/lib/constants";
 const NAV_ITEMS = [
   {
     href: "/",
-    label: "Home",
+    label: "Markets",
     icon: (
       <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955a1.126 1.126 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
       </svg>
     ),
   },
   {
-    href: "/create",
-    label: "Create",
+    href: "/predictions",
+    label: "Predict",
     icon: (
       <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
       </svg>
     ),
-    isAction: true,
   },
   {
     href: "/profile",
@@ -61,38 +60,25 @@ export default function BottomNav() {
     : NAV_ITEMS;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/5 bg-surface-500/90 backdrop-blur-xl md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/5 bg-black/80 backdrop-blur-xl md:hidden">
       <div className="flex items-center justify-around px-2 pb-[env(safe-area-inset-bottom)]">
         {items.map((item) => {
           const isActive = pathname === item.href;
-          const isAction = "isAction" in item && item.isAction;
 
           return (
             <Link
               key={item.href}
               href={item.href}
               className={`flex flex-col items-center gap-0.5 px-3 py-2 transition-all duration-200 ${
-                isAction
-                  ? ""
-                  : isActive
-                  ? "text-white"
-                  : "text-gray-500"
+                isActive ? "text-white" : "text-gray-500"
               }`}
             >
-              {isAction ? (
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-lg shadow-primary-500/20 transition-transform active:scale-90">
-                  {item.icon}
-                </div>
-              ) : (
-                <>
-                  <div className={`transition-transform duration-200 ${isActive ? "scale-110" : ""}`}>
-                    {item.icon}
-                  </div>
-                  <span className="text-[10px] font-medium">{item.label}</span>
-                  {isActive && (
-                    <div className="absolute -top-px h-0.5 w-8 rounded-full bg-gradient-primary" />
-                  )}
-                </>
+              <div className={`transition-transform duration-200 ${isActive ? "scale-110" : ""}`}>
+                {item.icon}
+              </div>
+              <span className="text-[10px] font-medium">{item.label}</span>
+              {isActive && (
+                <div className="absolute -top-px h-0.5 w-8 rounded-full bg-gradient-primary" />
               )}
             </Link>
           );

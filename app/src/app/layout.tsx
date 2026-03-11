@@ -5,9 +5,9 @@ import Navbar from "@/components/Navbar";
 import BottomNav from "@/components/BottomNav";
 
 export const metadata: Metadata = {
-  title: "Profitic - Solana Prediction Market",
+  title: "Profitic - Crypto Binary Markets on Solana",
   description:
-    "Trade on the future with Profitic, a decentralized prediction market built on Solana.",
+    "Trade UP or DOWN on crypto prices with 5-minute binary rounds. Built on Solana with Pyth Oracle.",
   icons: {
     icon: "/logo.png",
     apple: "/logo.png",

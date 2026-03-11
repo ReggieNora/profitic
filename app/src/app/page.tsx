@@ -1,45 +1,38 @@
 "use client";
 
-import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import FeedCard from "@/components/FeedCard";
-import { useMarkets } from "@/hooks/useMarkets";
-import { MARKET_CATEGORIES } from "@/lib/constants";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { CryptoAsset } from "@/types";
+import { useBinaryRounds } from "@/hooks/useBinaryRounds";
+import BinaryFeedCard from "@/components/BinaryFeedCard";
+import BinaryDetailModal from "@/components/BinaryDetailModal";
+
+// Feed order: BTC 5m → ETH 5m → SOL 5m
+const FEED_ORDER: CryptoAsset[] = ["BTC", "ETH", "SOL"];
 
 export default function HomePage() {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [showSearch, setShowSearch] = useState(false);
+  const { connected } = useWallet();
+  const { rounds, placeBet, livePrices } = useBinaryRounds();
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [expandedAsset, setExpandedAsset] = useState<CryptoAsset | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
-  const { markets, loading, error } = useMarkets({ search });
-
-  const filteredMarkets = useMemo(() => {
-    let result = markets;
-    // Filter out crypto_updown markets (moved to /binaries)
-    result = result.filter((m) => m.marketType !== "crypto_updown");
-    if (filter !== "all") {
-      result = result.filter((m) => m.category === filter);
+  const handleBet = (asset: CryptoAsset, side: "up" | "down", amount: number) => {
+    if (!connected) {
+      alert("Connect your wallet to place bets.");
+      return;
     }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (m) =>
-          m.question.toLowerCase().includes(q) ||
-          m.description.toLowerCase().includes(q)
-      );
-    }
-    return result;
-  }, [markets, filter, search]);
+    placeBet(asset, side, amount);
+  };
 
-  // Track which card is currently in view
+  // Track which card is in view
   const handleScroll = useCallback(() => {
     if (!feedRef.current) return;
     const container = feedRef.current;
     const scrollTop = container.scrollTop;
     const cardHeight = container.clientHeight;
     const index = Math.round(scrollTop / cardHeight);
-    setCurrentIndex(index);
+    setCurrentIndex(Math.min(index, FEED_ORDER.length - 1));
   }, []);
 
   useEffect(() => {
@@ -49,138 +42,82 @@ export default function HomePage() {
     return () => container.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
+  // Check if all rounds loaded
+  const allLoaded = FEED_ORDER.every((a) => rounds[a]);
+
   return (
-    <div className="relative -mt-14 h-screen w-full overflow-hidden bg-transparent">
-      {/* Search overlay */}
-      {showSearch && (
-        <div className="absolute inset-x-0 top-14 z-30 bg-white/[0.03] backdrop-blur-2xl backdrop-saturate-150 border-b border-white/10 animate-slide-down">
-          <div className="p-4">
-            <div className="relative mb-3">
-              <svg
-                className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search predictions..."
-                autoFocus
-                className="w-full rounded-2xl border border-surface-50/50 bg-surface-300 py-3 pl-11 pr-12 text-sm text-white placeholder-gray-500 outline-none focus:border-primary-500/40"
-              />
-              <button
-                onClick={() => { setShowSearch(false); setSearch(""); }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-white"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            {/* Filter pills */}
-            <div className="feed-scroll flex gap-2 overflow-x-auto pb-2">
-              {MARKET_CATEGORIES.map((f) => (
-                <button
-                  key={f.value}
-                  onClick={() => setFilter(f.value)}
-                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-all active:scale-95 ${
-                    filter === f.value
-                      ? "bg-white text-black"
-                      : "bg-white/10 text-white/70 hover:bg-white/20"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Top overlay controls — category tabs */}
-      <div className="absolute left-0 right-0 top-14 z-20 flex items-center gap-2 px-3 py-3">
-        <div className="feed-scroll flex flex-1 items-center gap-2 overflow-x-auto">
-          {MARKET_CATEGORIES.map((cat) => (
-            <button
-              key={cat.value}
-              onClick={() => { setFilter(cat.value); setSearch(""); }}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
-                filter === cat.value
-                  ? "bg-white text-black shadow-lg"
-                  : "bg-white/10 text-white/70 backdrop-blur-sm hover:bg-white/20"
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search button */}
-        <button
-          onClick={() => setShowSearch(true)}
-          className="shrink-0 rounded-full p-2 text-white/70 transition-all hover:text-white active:scale-90"
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        </button>
-      </div>
-
+    <div className="relative -mt-14 h-screen w-full overflow-hidden bg-black">
       {/* Loading state */}
-      {loading && (
+      {!allLoaded && (
         <div className="flex h-full items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-            <p className="text-sm text-white/40">Loading predictions...</p>
+            <p className="text-sm text-white/40">Loading markets...</p>
           </div>
-        </div>
-      )}
-
-      {/* Error banner */}
-      {error && !loading && markets.length > 0 && (
-        <div className="absolute left-4 right-4 top-28 z-20 rounded-xl bg-yellow-500/10 px-4 py-2 text-center text-xs text-yellow-400 backdrop-blur-sm">
-          Demo mode &mdash; using sample data
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!loading && filteredMarkets.length === 0 && (
-        <div className="flex h-full flex-col items-center justify-center text-white/40">
-          <svg className="mb-4 h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="text-lg font-semibold">No predictions found</p>
-          <p className="mt-1 text-sm text-white/25">Try a different filter</p>
         </div>
       )}
 
       {/* Full-screen vertical snap feed */}
-      {!loading && filteredMarkets.length > 0 && (
+      {allLoaded && (
         <div
           ref={feedRef}
           className="feed-scroll h-full snap-y snap-mandatory overflow-y-scroll"
         >
-          {filteredMarkets.map((market, i) => (
-            <div
-              key={market.id}
-              className="h-full w-full snap-start snap-always"
-            >
-              <FeedCard
-                market={market}
-                index={i}
-                total={filteredMarkets.length}
-              />
-            </div>
+          {FEED_ORDER.map((asset, i) => {
+            const round = rounds[asset];
+            if (!round) return null;
+            return (
+              <div
+                key={`${asset}-${round.roundNumber}`}
+                className="h-full w-full snap-start snap-always"
+              >
+                <BinaryFeedCard
+                  round={round}
+                  livePrice={livePrices[asset]}
+                  onBet={(side, amount) => handleBet(asset, side, amount)}
+                  onTrade={() => setExpandedAsset(asset)}
+                  isActive={i === currentIndex}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Dot indicators */}
+      {allLoaded && (
+        <div className="absolute right-4 top-1/2 z-20 -translate-y-1/2 flex flex-col gap-2">
+          {FEED_ORDER.map((asset, i) => (
+            <button
+              key={asset}
+              onClick={() => {
+                feedRef.current?.scrollTo({
+                  top: i * (feedRef.current?.clientHeight || 0),
+                  behavior: "smooth",
+                });
+              }}
+              className={`h-2.5 w-2.5 rounded-full transition-all ${
+                i === currentIndex
+                  ? "bg-white scale-125"
+                  : "bg-white/30 hover:bg-white/50"
+              }`}
+              title={asset}
+            />
           ))}
         </div>
       )}
 
-      {/* Navigation arrows (desktop) */}
-      {!loading && filteredMarkets.length > 1 && (
+      {/* Swipe hint on first load */}
+      {allLoaded && currentIndex === 0 && (
+        <div className="absolute bottom-24 left-1/2 z-20 -translate-x-1/2 animate-bounce opacity-40 md:hidden">
+          <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      )}
+
+      {/* Desktop nav arrows */}
+      {allLoaded && FEED_ORDER.length > 1 && (
         <div className="absolute bottom-8 right-4 z-20 hidden flex-col gap-2 md:flex">
           <button
             onClick={() => {
@@ -199,13 +136,13 @@ export default function HomePage() {
           </button>
           <button
             onClick={() => {
-              if (!feedRef.current || currentIndex >= filteredMarkets.length - 1) return;
+              if (!feedRef.current || currentIndex >= FEED_ORDER.length - 1) return;
               feedRef.current.scrollTo({
                 top: (currentIndex + 1) * feedRef.current.clientHeight,
                 behavior: "smooth",
               });
             }}
-            disabled={currentIndex >= filteredMarkets.length - 1}
+            disabled={currentIndex >= FEED_ORDER.length - 1}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/20 disabled:opacity-30"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -213,6 +150,16 @@ export default function HomePage() {
             </svg>
           </button>
         </div>
+      )}
+
+      {/* Trade detail modal */}
+      {expandedAsset && rounds[expandedAsset] && (
+        <BinaryDetailModal
+          round={rounds[expandedAsset]}
+          livePrice={livePrices[expandedAsset]}
+          onBet={(side, amount) => handleBet(expandedAsset, side, amount)}
+          onClose={() => setExpandedAsset(null)}
+        />
       )}
     </div>
   );
