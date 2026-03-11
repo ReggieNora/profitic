@@ -14,6 +14,7 @@ interface BinaryFeedCardProps {
   livePrice: number;
   onBet: (side: "up" | "down", amount: number) => void;
   onTrade: () => void;
+  onChat: () => void;
   isActive: boolean;
 }
 
@@ -37,6 +38,7 @@ export default function BinaryFeedCard({
   livePrice,
   onBet,
   onTrade,
+  onChat,
   isActive,
 }: BinaryFeedCardProps) {
   const [betAmount, setBetAmount] = useState("");
@@ -365,7 +367,7 @@ export default function BinaryFeedCard({
 
         {/* Chat / Activity */}
         <button
-          onClick={(e) => { e.stopPropagation(); onTrade(); }}
+          onClick={(e) => { e.stopPropagation(); onChat(); }}
           className="flex flex-col items-center gap-1 transition-transform active:scale-90"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">

@@ -6,6 +6,7 @@ import { CryptoAsset } from "@/types";
 import { useBinaryRounds } from "@/hooks/useBinaryRounds";
 import BinaryFeedCard from "@/components/BinaryFeedCard";
 import BinaryDetailModal from "@/components/BinaryDetailModal";
+import BinaryChatPanel from "@/components/BinaryChatPanel";
 
 // Feed order: BTC 5m → ETH 5m → SOL 5m
 const FEED_ORDER: CryptoAsset[] = ["BTC", "ETH", "SOL"];
@@ -15,6 +16,7 @@ export default function HomePage() {
   const { rounds, placeBet, livePrices } = useBinaryRounds();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expandedAsset, setExpandedAsset] = useState<CryptoAsset | null>(null);
+  const [chatAsset, setChatAsset] = useState<CryptoAsset | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
   const handleBet = (asset: CryptoAsset, side: "up" | "down", amount: number) => {
@@ -76,6 +78,7 @@ export default function HomePage() {
                   livePrice={livePrices[asset]}
                   onBet={(side, amount) => handleBet(asset, side, amount)}
                   onTrade={() => setExpandedAsset(asset)}
+                  onChat={() => setChatAsset(asset)}
                   isActive={i === currentIndex}
                 />
               </div>
@@ -159,6 +162,14 @@ export default function HomePage() {
           livePrice={livePrices[expandedAsset]}
           onBet={(side, amount) => handleBet(expandedAsset, side, amount)}
           onClose={() => setExpandedAsset(null)}
+        />
+      )}
+
+      {/* Chat panel */}
+      {chatAsset && rounds[chatAsset] && (
+        <BinaryChatPanel
+          round={rounds[chatAsset]}
+          onClose={() => setChatAsset(null)}
         />
       )}
     </div>
