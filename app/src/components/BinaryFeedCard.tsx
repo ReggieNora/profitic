@@ -187,8 +187,41 @@ export default function BinaryFeedCard({
         </div>
       )}
 
-      {/* Background chart — fills entire card */}
-      <div className="absolute inset-0 z-0">
+      {/* Watermark logo with radial timer — behind chart */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+          <div className="relative" style={{ width: 400, height: 400 }}>
+            {/* Logo at base opacity */}
+            <div className="absolute inset-0 opacity-[0.12]">
+              <CryptoLogo asset={round.asset} size={400} />
+            </div>
+            {/* Conic-gradient timer overlay — fills clockwise over entire logo */}
+            <div
+              className={`absolute inset-0 rounded-full ${nearLock ? "animate-timer-pulse" : ""}`}
+              style={{
+                background: nearLock
+                  ? `conic-gradient(from 0deg, rgba(239,68,68,0.45) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`
+                  : `conic-gradient(from 0deg, rgba(0,0,0,0.45) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`,
+              }}
+            />
+            {/* Red flash overlay when entering lock zone */}
+            {lockFlash && (
+              <div className="absolute inset-0 rounded-full bg-red-500/40 animate-lock-flash" />
+            )}
+            {/* Lock countdown number in center */}
+            {lockCountdown !== null && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-7xl font-black tabular-nums text-red-400 drop-shadow-[0_0_20px_rgba(239,68,68,0.6)]">
+                  {lockCountdown}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Background chart — fills entire card, above watermark */}
+      <div className="absolute inset-0 z-[1]">
         {priceHistory.length >= 2 ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={priceHistory} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
@@ -238,36 +271,6 @@ export default function BinaryFeedCard({
         )}
         {/* Overlay gradient for readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
-        {/* Watermark logo with radial timer */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-          <div className="relative" style={{ width: 400, height: 400 }}>
-            {/* Logo at base opacity */}
-            <div className="absolute inset-0 opacity-[0.12]">
-              <CryptoLogo asset={round.asset} size={400} />
-            </div>
-            {/* Conic-gradient timer overlay — fills clockwise over entire logo */}
-            <div
-              className={`absolute inset-0 rounded-full ${nearLock ? "animate-timer-pulse" : ""}`}
-              style={{
-                background: nearLock
-                  ? `conic-gradient(from 0deg, rgba(239,68,68,0.45) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`
-                  : `conic-gradient(from 0deg, rgba(0,0,0,0.45) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`,
-              }}
-            />
-            {/* Red flash overlay when entering lock zone */}
-            {lockFlash && (
-              <div className="absolute inset-0 rounded-full bg-red-500/40 animate-lock-flash" />
-            )}
-            {/* Lock countdown number in center */}
-            {lockCountdown !== null && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-7xl font-black tabular-nums text-red-400 drop-shadow-[0_0_20px_rgba(239,68,68,0.6)]">
-                  {lockCountdown}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Top bar — timer only (no logo/name, moved to center) */}
