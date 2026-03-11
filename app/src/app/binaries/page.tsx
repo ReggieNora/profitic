@@ -7,6 +7,7 @@ import { CryptoAsset, CRYPTO_ASSETS } from "@/types";
 import { useBinaryRounds } from "@/hooks/useBinaryRounds";
 import BinaryRoundCard from "@/components/BinaryRoundCard";
 import BinaryDetailModal from "@/components/BinaryDetailModal";
+import { CryptoLogo } from "@/components/CryptoLogos";
 
 const ASSET_TABS: CryptoAsset[] = ["BTC", "ETH", "SOL"];
 
@@ -70,7 +71,7 @@ export default function BinariesPage() {
                   : "bg-white/10 text-white/70 hover:bg-white/20"
               }`}
             >
-              {meta.icon}
+              <CryptoLogo asset={asset} size={16} className="inline-block" />
             </button>
           );
         })}

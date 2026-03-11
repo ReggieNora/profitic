@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import { BinaryRound, CryptoAsset, CRYPTO_ASSETS } from "@/types";
-import { useCryptoPrice } from "@/hooks/useCryptoPrice";
+import { CryptoLogo } from "./CryptoLogos";
 
 interface BinaryRoundCardProps {
   round: BinaryRound;
@@ -164,9 +164,7 @@ export default function BinaryRoundCard({
       {/* Header */}
       <div className="flex items-center justify-between border-b border-surface-50/30 px-5 py-3">
         <div className="flex items-center gap-3">
-          <span className={`text-2xl font-black ${assetMeta.color}`}>
-            {assetMeta.icon}
-          </span>
+          <CryptoLogo asset={round.asset} size={32} />
           <div>
             <h3 className="text-sm font-bold text-white">{assetMeta.label}</h3>
             <p className="text-[10px] text-gray-500">

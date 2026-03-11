@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import { BinaryRound, CryptoAsset, CRYPTO_ASSETS } from "@/types";
 import { PricePoint } from "./BinaryRoundCard";
+import { CryptoLogo } from "./CryptoLogos";
 
 interface BinaryDetailModalProps {
   round: BinaryRound;
@@ -142,7 +143,7 @@ export default function BinaryDetailModal({
         {/* Header */}
         <div className="border-b border-surface-50/30 px-6 py-4">
           <div className="flex items-center gap-3">
-            <span className={`text-3xl font-black ${assetMeta.color}`}>{assetMeta.icon}</span>
+            <CryptoLogo asset={round.asset} size={40} />
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-white">{assetMeta.label}</h2>
