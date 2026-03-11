@@ -6,6 +6,7 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { CryptoAsset, CRYPTO_ASSETS } from "@/types";
 import { useBinaryRounds } from "@/hooks/useBinaryRounds";
 import BinaryRoundCard from "@/components/BinaryRoundCard";
+import BinaryDetailModal from "@/components/BinaryDetailModal";
 
 const ASSET_TABS: CryptoAsset[] = ["BTC", "ETH", "SOL"];
 
@@ -13,6 +14,7 @@ export default function BinariesPage() {
   const { connected } = useWallet();
   const { rounds, placeBet, livePrices } = useBinaryRounds();
   const [activeAsset, setActiveAsset] = useState<CryptoAsset | "all">("all");
+  const [expandedAsset, setExpandedAsset] = useState<CryptoAsset | null>(null);
 
   const handleBet = (asset: CryptoAsset, side: "up" | "down", amount: number) => {
     if (!connected) {
@@ -126,10 +128,21 @@ export default function BinariesPage() {
               round={round}
               livePrice={livePrices[asset]}
               onBet={(side, amount) => handleBet(asset, side, amount)}
+              onClick={() => setExpandedAsset(asset)}
             />
           );
         })}
       </div>
+
+      {/* Expanded detail modal */}
+      {expandedAsset && rounds[expandedAsset] && (
+        <BinaryDetailModal
+          round={rounds[expandedAsset]}
+          livePrice={livePrices[expandedAsset]}
+          onBet={(side, amount) => handleBet(expandedAsset, side, amount)}
+          onClose={() => setExpandedAsset(null)}
+        />
+      )}
 
       {/* Stats footer */}
       <div className="mt-6 grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "180ms" }}>

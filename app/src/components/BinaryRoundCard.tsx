@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -12,6 +12,8 @@ interface BinaryRoundCardProps {
   round: BinaryRound;
   livePrice: number;
   onBet: (side: "up" | "down", amount: number) => void;
+  onClick?: () => void;
+  compact?: boolean;
 }
 
 const QUICK_AMOUNTS = [0.1, 0.5, 1, 5];
@@ -29,26 +31,46 @@ function formatPrice(p: number): string {
   return `$${p.toFixed(2)}`;
 }
 
-interface PricePoint {
+export interface PricePoint {
   time: string;
   price: number;
+  ts: number;
+}
+
+// Realistic micro-jitter: simulates tick-level price noise between API updates
+// Varies by asset to reflect real volatility ratios
+const JITTER_BPS: Record<CryptoAsset, number> = {
+  BTC: 3,   // ~0.03% jitter
+  ETH: 5,   // ~0.05% jitter
+  SOL: 8,   // ~0.08% jitter
+};
+
+function jitteredPrice(base: number, asset: CryptoAsset): number {
+  const bps = JITTER_BPS[asset];
+  const pct = (Math.random() - 0.5) * 2 * (bps / 10000);
+  return base * (1 + pct);
 }
 
 export default function BinaryRoundCard({
   round,
   livePrice,
   onBet,
+  onClick,
+  compact = false,
 }: BinaryRoundCardProps) {
   const [betAmount, setBetAmount] = useState("");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [countdown, setCountdown] = useState("");
+  const lastApiPrice = useRef(0);
+  const driftRef = useRef(0);
 
   const assetMeta = CRYPTO_ASSETS.find((a) => a.value === round.asset)!;
   const currentPrice = livePrice > 0 ? livePrice : round.startPrice;
-  const isAboveStart = currentPrice >= round.startPrice;
+  const displayPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : currentPrice;
+  const isAboveStart = displayPrice >= round.startPrice;
   const priceChangePct =
     round.startPrice > 0
-      ? ((currentPrice - round.startPrice) / round.startPrice) * 100
+      ? ((displayPrice - round.startPrice) / round.startPrice) * 100
       : 0;
 
   // Pool calculations
@@ -73,24 +95,52 @@ export default function BinaryRoundCard({
     return () => clearInterval(interval);
   }, [round.endTime]);
 
-  // Accumulate live price data
+  // Reset price history when round changes
+  useEffect(() => {
+    setPriceHistory([]);
+    lastApiPrice.current = 0;
+    driftRef.current = 0;
+  }, [round.id]);
+
+  // Accumulate price data on a timer with realistic jitter
   useEffect(() => {
     if (currentPrice <= 0) return;
-    const now = new Date();
-    const time = `${now.getMinutes()}:${now.getSeconds().toString().padStart(2, "0")}`;
-    setPriceHistory((prev) => {
-      const updated = [...prev, { time, price: currentPrice }];
-      // Keep last 100 points
-      return updated.slice(-100);
-    });
-  }, [currentPrice]);
 
-  // Y domain for chart
-  const allPrices = priceHistory.map((p) => p.price);
-  allPrices.push(round.startPrice);
-  const minP = Math.min(...(allPrices.length ? allPrices : [0]));
-  const maxP = Math.max(...(allPrices.length ? allPrices : [0]));
-  const pad = (maxP - minP) * 0.15 || maxP * 0.003 || 1;
+    // When the API price updates, snap drift toward it
+    if (currentPrice !== lastApiPrice.current) {
+      lastApiPrice.current = currentPrice;
+      driftRef.current = currentPrice;
+    }
+
+    const addPoint = () => {
+      const base = driftRef.current || currentPrice;
+      const jittered = jitteredPrice(base, round.asset);
+      // Random walk: drift slightly from current jittered position
+      driftRef.current = jittered;
+
+      const now = new Date();
+      const time = `${now.getMinutes()}:${now.getSeconds().toString().padStart(2, "0")}`;
+      setPriceHistory((prev) => {
+        const updated = [...prev, { time, price: jittered, ts: Date.now() }];
+        return updated.slice(-100);
+      });
+    };
+
+    // Add initial point immediately
+    addPoint();
+
+    // Add points every 2 seconds for smooth chart movement
+    const interval = setInterval(addPoint, 2000);
+    return () => clearInterval(interval);
+  }, [currentPrice, round.asset, round.id]);
+
+  // Y domain for chart — tight domain to show real variations
+  const prices = priceHistory.map((p) => p.price);
+  prices.push(round.startPrice);
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const range = maxP - minP;
+  const pad = range > 0 ? range * 0.2 : maxP * 0.001 || 1;
 
   const handleBet = (side: "up" | "down") => {
     const amt = parseFloat(betAmount) || 0;
@@ -107,7 +157,10 @@ export default function BinaryRoundCard({
   };
 
   return (
-    <div className="rounded-2xl border border-surface-50/50 bg-surface-300 overflow-hidden">
+    <div
+      className={`rounded-2xl border border-surface-50/50 bg-surface-300 overflow-hidden ${onClick ? "cursor-pointer transition-all hover:border-primary-500/40 hover:shadow-lg hover:shadow-primary-500/5" : ""}`}
+      onClick={onClick}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-surface-50/30 px-5 py-3">
         <div className="flex items-center gap-3">
@@ -138,7 +191,7 @@ export default function BinaryRoundCard({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <span className="text-xl font-black tabular-nums text-white">
-              ${currentPrice.toLocaleString(undefined, {
+              ${displayPrice.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -188,7 +241,7 @@ export default function BinaryRoundCard({
                     fontSize: 11,
                     color: "#fff",
                   }}
-                  formatter={(v: number) => [`$${v.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, round.asset]}
+                  formatter={(v: number | string) => [`$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, round.asset]}
                 />
                 <ReferenceLine
                   y={round.startPrice}
