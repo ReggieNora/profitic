@@ -44,6 +44,8 @@ export default function BinaryFeedCard({
   const [countdown, setCountdown] = useState("");
   const [timerPct, setTimerPct] = useState(0);
   const [nearLock, setNearLock] = useState(false);
+  const [lockCountdown, setLockCountdown] = useState<number | null>(null);
+  const [lockFlash, setLockFlash] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount] = useState(() => 80 + Math.floor(Math.random() * 200));
   const [shared, setShared] = useState(false);
@@ -84,7 +86,15 @@ export default function BinaryFeedCard({
 
       // Near lock: within BINARY_LOCK_BUFFER (30s) of lock time
       const timeToLock = round.lockTime - now;
-      setNearLock(timeToLock > 0 && timeToLock <= 30);
+      const wasNearLock = timeToLock > 0 && timeToLock <= 30;
+      setNearLock(wasNearLock);
+      setLockCountdown(wasNearLock ? Math.ceil(timeToLock) : null);
+
+      // Flash red when transitioning into near-lock zone
+      if (wasNearLock && timeToLock > 29.5 && timeToLock <= 30) {
+        setLockFlash(true);
+        setTimeout(() => setLockFlash(false), 600);
+      }
     };
     tick();
     const interval = setInterval(tick, 200); // faster tick for smooth pulse
@@ -231,15 +241,27 @@ export default function BinaryFeedCard({
             <div className="absolute inset-0 opacity-[0.12]">
               <CryptoLogo asset={round.asset} size={400} />
             </div>
-            {/* Conic-gradient timer overlay — fills clockwise with dark tint */}
+            {/* Conic-gradient timer overlay — fills clockwise over entire logo */}
             <div
-              className={`absolute inset-0 rounded-full transition-opacity ${nearLock ? "animate-timer-pulse" : ""}`}
+              className={`absolute inset-0 rounded-full ${nearLock ? "animate-timer-pulse" : ""}`}
               style={{
-                background: `conic-gradient(from 0deg, rgba(0,0,0,0.55) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`,
-                maskImage: "radial-gradient(circle, black 48%, transparent 50%)",
-                WebkitMaskImage: "radial-gradient(circle, black 48%, transparent 50%)",
+                background: nearLock
+                  ? `conic-gradient(from 0deg, rgba(239,68,68,0.45) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`
+                  : `conic-gradient(from 0deg, rgba(0,0,0,0.45) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`,
               }}
             />
+            {/* Red flash overlay when entering lock zone */}
+            {lockFlash && (
+              <div className="absolute inset-0 rounded-full bg-red-500/40 animate-lock-flash" />
+            )}
+            {/* Lock countdown number in center */}
+            {lockCountdown !== null && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-7xl font-black tabular-nums text-red-400 drop-shadow-[0_0_20px_rgba(239,68,68,0.6)]">
+                  {lockCountdown}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>

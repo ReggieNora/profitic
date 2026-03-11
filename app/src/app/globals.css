@@ -265,3 +265,13 @@ body {
 .animate-timer-pulse {
   animation: timer-pulse 1s ease-in-out infinite;
 }
+
+/* Red flash when entering lock zone */
+@keyframes lock-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.animate-lock-flash {
+  animation: lock-flash 0.6s ease-out forwards;
+}
