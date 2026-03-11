@@ -84,14 +84,16 @@ export default function BinaryFeedCard({
       const pct = Math.min(100, (elapsed / round.duration) * 100);
       setTimerPct(pct);
 
-      // Near lock: within BINARY_LOCK_BUFFER (30s) of lock time
+      // Post-lock: bets are locked, count down the final 30s to resolution
       const timeToLock = round.lockTime - now;
-      const wasNearLock = timeToLock > 0 && timeToLock <= 30;
-      setNearLock(wasNearLock);
-      setLockCountdown(wasNearLock ? Math.ceil(timeToLock) : null);
+      const timeSinceLock = now - round.lockTime;
+      const isPostLock = timeToLock <= 0 && remaining > 0;
+      const lockSecsLeft = isPostLock ? Math.max(0, round.endTime - now) : null;
+      setNearLock(isPostLock);
+      setLockCountdown(lockSecsLeft !== null ? Math.ceil(lockSecsLeft) : null);
 
-      // Flash red when transitioning into near-lock zone
-      if (wasNearLock && timeToLock > 29.5 && timeToLock <= 30) {
+      // Flash red when bets first lock
+      if (timeSinceLock >= 0 && timeSinceLock < 1) {
         setLockFlash(true);
         setTimeout(() => setLockFlash(false), 600);
       }
