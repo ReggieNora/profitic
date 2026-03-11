@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   AreaChart, Area, YAxis,
   ResponsiveContainer, ReferenceLine,
@@ -42,8 +42,13 @@ export default function BinaryFeedCard({
   const [betAmount, setBetAmount] = useState("");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [countdown, setCountdown] = useState("");
+  const [liked, setLiked] = useState(false);
+  const [likeCount] = useState(() => 80 + Math.floor(Math.random() * 200));
+  const [shared, setShared] = useState(false);
+  const [showHeartAnim, setShowHeartAnim] = useState(false);
   const lastApiPrice = useRef(0);
   const driftRef = useRef(0);
+  const lastTapRef = useRef(0);
 
   const assetMeta = CRYPTO_ASSETS.find((a) => a.value === round.asset)!;
   const currentPrice = livePrice > 0 ? livePrice : round.startPrice;
@@ -82,9 +87,9 @@ export default function BinaryFeedCard({
     driftRef.current = 0;
   }, [round.id]);
 
-  // Accumulate chart data — only when active
+  // Accumulate chart data from mount (all cards build data in background)
   useEffect(() => {
-    if (!isActive || currentPrice <= 0) return;
+    if (currentPrice <= 0) return;
     if (currentPrice !== lastApiPrice.current) {
       lastApiPrice.current = currentPrice;
       driftRef.current = currentPrice;
@@ -100,7 +105,7 @@ export default function BinaryFeedCard({
     addPoint();
     const interval = setInterval(addPoint, 2000);
     return () => clearInterval(interval);
-  }, [isActive, currentPrice, round.asset, round.id]);
+  }, [currentPrice, round.asset, round.id]);
 
   const prices = priceHistory.map((p) => p.price);
   prices.push(round.startPrice);
@@ -116,11 +121,48 @@ export default function BinaryFeedCard({
     setBetAmount("");
   };
 
+  const handleDoubleTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      if (!liked) setLiked(true);
+      setShowHeartAnim(true);
+      setTimeout(() => setShowHeartAnim(false), 800);
+    }
+    lastTapRef.current = now;
+  }, [liked]);
+
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${assetMeta.label} Binary Market`,
+          text: `${round.asset} is ${isAboveStart ? "UP" : "DOWN"} ${Math.abs(priceChangePct).toFixed(3)}%`,
+          url: window.location.origin,
+        });
+      } else {
+        await navigator.clipboard.writeText(window.location.origin);
+        setShared(true);
+        setTimeout(() => setShared(false), 2000);
+      }
+    } catch {
+      // cancelled
+    }
+  };
+
   const elapsed = Math.floor(Date.now() / 1000) - round.startTime;
   const progressPct = Math.min(100, (elapsed / round.duration) * 100);
 
   return (
-    <div className="relative flex h-full w-full flex-col justify-end overflow-hidden">
+    <div className="relative flex h-full w-full flex-col justify-end overflow-hidden" onClick={handleDoubleTap}>
+      {/* Double-tap heart animation */}
+      {showHeartAnim && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+          <svg className="h-28 w-28 text-red-500 animate-heart-pop" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+          </svg>
+        </div>
+      )}
+
       {/* Background chart — fills entire card */}
       <div className="absolute inset-0 z-0">
         {priceHistory.length >= 2 ? (
@@ -222,8 +264,95 @@ export default function BinaryFeedCard({
         </p>
       </div>
 
+      {/* Right sidebar — TikTok-style action buttons */}
+      <div className="absolute bottom-44 right-3 z-10 flex flex-col items-center gap-5 sm:right-5">
+        {/* Asset avatar */}
+        <div className="relative">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-primary ring-2 ring-black/40 transition-transform active:scale-90">
+            <CryptoLogo asset={round.asset} size={28} />
+          </div>
+          <div className="absolute -bottom-1 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full bg-primary-500 text-white">
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Heart/Like */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setLiked((p) => !p); }}
+          className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+        >
+          <div className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${
+            liked ? "bg-red-500/20" : "bg-white/10 backdrop-blur-sm"
+          }`}>
+            <svg
+              className={`h-6 w-6 transition-all ${liked ? "text-red-500 scale-110" : "text-white"}`}
+              viewBox="0 0 24 24"
+              fill={liked ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth={liked ? 0 : 1.5}
+            >
+              <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+            </svg>
+          </div>
+          <span className={`text-[10px] font-bold ${liked ? "text-red-400" : "text-white"}`}>
+            {likeCount + (liked ? 1 : 0)}
+          </span>
+        </button>
+
+        {/* Chat / Activity */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onTrade(); }}
+          className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
+            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+            </svg>
+          </div>
+          <span className="text-[10px] font-bold text-white">Chat</span>
+        </button>
+
+        {/* Share */}
+        <button
+          onClick={(e) => { e.stopPropagation(); handleShare(); }}
+          className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+        >
+          <div className={`flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-sm transition-all ${
+            shared ? "bg-green-500/20" : "bg-white/10"
+          }`}>
+            {shared ? (
+              <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+              </svg>
+            )}
+          </div>
+          <span className={`text-[10px] font-bold ${shared ? "text-green-400" : "text-white"}`}>
+            {shared ? "Copied" : "Share"}
+          </span>
+        </button>
+
+        {/* Trade button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onTrade(); }}
+          className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-primary shadow-lg shadow-primary-500/20">
+            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <span className="text-[10px] font-bold text-white">Trade</span>
+        </button>
+      </div>
+
       {/* Bottom controls */}
-      <div className="relative z-10 p-5 pb-6">
+      <div className="relative z-10 p-5 pb-6 pr-16">
         {/* Pool info */}
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
