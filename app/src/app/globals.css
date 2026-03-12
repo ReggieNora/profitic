@@ -308,12 +308,8 @@ body {
 }
 
 .ticker-track {
-  animation: ticker-scroll 40s linear infinite;
+  animation: ticker-scroll 18s linear infinite;
   will-change: transform;
-}
-
-.ticker-wrap:hover .ticker-track {
-  animation-play-state: paused;
 }
 
 /* Dot-matrix font feel via subtle text-shadow */
