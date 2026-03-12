@@ -21,9 +21,8 @@ const priceCache: Record<string, { price: number; timestamp: number; source: "co
 const CACHE_TTL = 10_000; // 10 seconds
 
 /**
- * Hook to fetch live crypto prices from CoinGecko (free, no API key).
+ * Hook to fetch live crypto prices via server-side proxy.
  * Caches prices for 10 seconds and polls every 10 seconds.
- * Falls back to approximate prices if fetch fails.
  */
 export function useCryptoPrice(asset: CryptoAsset): CryptoPriceResult {
   const [price, setPrice] = useState<number>(0);
@@ -43,14 +42,14 @@ export function useCryptoPrice(asset: CryptoAsset): CryptoPriceResult {
     try {
       const id = COINGECKO_IDS[asset];
       const res = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,
-        { signal: AbortSignal.timeout(5000) }
+        `/api/prices?ids=${encodeURIComponent(id)}`,
+        { signal: AbortSignal.timeout(8000) }
       );
 
-      if (!res.ok) throw new Error(`CoinGecko returned ${res.status}`);
+      if (!res.ok) throw new Error(`Price proxy returned ${res.status}`);
 
       const data = await res.json();
-      const fetchedPrice = data?.[id]?.usd;
+      const fetchedPrice = data?.[id];
 
       if (typeof fetchedPrice === "number" && fetchedPrice > 0) {
         priceCache[asset] = { price: fetchedPrice, timestamp: Date.now(), source: "coingecko" };
@@ -93,11 +92,11 @@ export async function fetchCryptoPrice(asset: CryptoAsset): Promise<number> {
   try {
     const id = COINGECKO_IDS[asset];
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,
-      { signal: AbortSignal.timeout(5000) }
+      `/api/prices?ids=${encodeURIComponent(id)}`,
+      { signal: AbortSignal.timeout(8000) }
     );
     const data = await res.json();
-    const price = data?.[id]?.usd;
+    const price = data?.[id];
     if (typeof price === "number" && price > 0) {
       priceCache[asset] = { price, timestamp: Date.now(), source: "coingecko" };
       return price;

@@ -132,8 +132,8 @@ export async function discoverTrendingTokens(count = 3): Promise<TradingAsset[]>
   }
 
   try {
-    const res = await fetch("https://api.coingecko.com/api/v3/search/trending", {
-      signal: AbortSignal.timeout(5000),
+    const res = await fetch("/api/trending", {
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!res.ok) throw new Error(`CoinGecko trending: ${res.status}`);
@@ -350,19 +350,63 @@ export async function fetchAssetPrice(coingeckoId: string): Promise<number> {
     return cached.price;
   }
 
+  // Use server-side proxy
   try {
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd`,
-      { signal: AbortSignal.timeout(5000) }
+      `/api/prices?ids=${encodeURIComponent(coingeckoId)}`,
+      { signal: AbortSignal.timeout(8000) }
     );
-    const data = await res.json();
-    const price = data?.[coingeckoId]?.usd;
-    if (typeof price === "number" && price > 0) {
-      assetPriceCache[coingeckoId] = { price, ts: Date.now() };
-      return price;
+    if (res.ok) {
+      const data = await res.json();
+      const price = data?.[coingeckoId];
+      if (typeof price === "number" && price > 0) {
+        assetPriceCache[coingeckoId] = { price, ts: Date.now() };
+        return price;
+      }
     }
   } catch {
     // use cache if available
   }
   return cached?.price || 0;
+}
+
+/**
+ * Fetch prices for multiple assets in a single batched request via proxy.
+ */
+export async function fetchAssetPrices(
+  coingeckoIds: string[]
+): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  const toFetch: string[] = [];
+
+  for (const id of coingeckoIds) {
+    const cached = assetPriceCache[id];
+    if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
+      result[id] = cached.price;
+    } else {
+      toFetch.push(id);
+    }
+  }
+
+  if (toFetch.length > 0) {
+    try {
+      const res = await fetch(
+        `/api/prices?ids=${encodeURIComponent(toFetch.join(","))}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (res.ok) {
+        const data: Record<string, number> = await res.json();
+        for (const [id, price] of Object.entries(data)) {
+          if (typeof price === "number" && price > 0) {
+            assetPriceCache[id] = { price, ts: Date.now() };
+            result[id] = price;
+          }
+        }
+      }
+    } catch {
+      // use cached values
+    }
+  }
+
+  return result;
 }

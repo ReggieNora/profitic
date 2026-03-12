@@ -5,7 +5,7 @@ import {
   TradingAsset,
   CORE_ASSETS,
   discoverTrendingTokens,
-  fetchAssetPrice,
+  fetchAssetPrices,
   formatInterval,
 } from "@/lib/tokenDiscovery";
 
@@ -170,21 +170,19 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       const allAssets = [...CORE_ASSETS, ...trending];
       setAssets(allAssets);
 
-      // Fetch all prices in parallel
-      const priceEntries = await Promise.allSettled(
-        allAssets.map(async (a) => {
-          const price = await fetchAssetPrice(a.coingeckoId);
-          return [a.symbol, price] as [string, number];
-        })
-      );
+      // Fetch all prices in a single batched request
+      const ids = allAssets.map((a) => a.coingeckoId);
+      const fetchedPrices = await fetchAssetPrices(ids);
 
       const prices: Record<string, number> = { ...fallbackPrices };
-      priceEntries.forEach((result) => {
-        if (result.status === "fulfilled") {
-          const [sym, price] = result.value;
-          prices[sym] = price > 0 ? price : (FALLBACK_PRICES[allAssets.find((a) => a.symbol === sym)?.coingeckoId ?? ""] || 0.01);
+      for (const asset of allAssets) {
+        const p = fetchedPrices[asset.coingeckoId];
+        if (p && p > 0) {
+          prices[asset.symbol] = p;
+        } else {
+          prices[asset.symbol] = prices[asset.symbol] || FALLBACK_PRICES[asset.coingeckoId] || 0.01;
         }
-      });
+      }
       setLivePrices(prices);
 
       // Add markets for any new trending assets
@@ -214,20 +212,17 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     const interval = setInterval(async () => {
       const now = Math.floor(Date.now() / 1000);
 
-      // Refresh prices
+      // Refresh prices in a single batched request
       const currentAssets = assets;
       const newPrices: Record<string, number> = { ...livePricesRef.current };
-      const priceResults = await Promise.allSettled(
-        currentAssets.map(async (a) => {
-          const p = await fetchAssetPrice(a.coingeckoId);
-          return [a.symbol, p] as [string, number];
-        })
-      );
-      priceResults.forEach((r) => {
-        if (r.status === "fulfilled" && r.value[1] > 0) {
-          newPrices[r.value[0]] = r.value[1];
+      const ids = currentAssets.map((a) => a.coingeckoId);
+      const fetched = await fetchAssetPrices(ids);
+      for (const asset of currentAssets) {
+        const p = fetched[asset.coingeckoId];
+        if (p && p > 0) {
+          newPrices[asset.symbol] = p;
         }
-      });
+      }
       setLivePrices(newPrices);
 
       setMarkets((prev) => {
