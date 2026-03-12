@@ -11,7 +11,7 @@ import {
   Tooltip,
 } from "recharts";
 import { CompletedRound } from "@/hooks/useBinaryMarkets";
-import { fetchPriceChart } from "@/lib/tokenDiscovery";
+import { fetchDailyChart, fetchPriceChart } from "@/lib/tokenDiscovery";
 import { CryptoLogo } from "./CryptoLogos";
 
 interface RoundHistoryPanelProps {
@@ -95,10 +95,7 @@ export default function RoundHistoryPanel({
     setChartLoading(true);
 
     const load = async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const from = now - 86400; // 24 hours ago
-
-      const prices = await fetchPriceChart(coingeckoId, from, now);
+      const prices = await fetchDailyChart(coingeckoId);
       if (cancelled) return;
 
       if (prices.length > 0) {

@@ -192,12 +192,50 @@ const PRICE_CACHE_TTL = 10_000;
 
 /**
  * Fetch historical price chart from CoinGecko.
- * Uses /market_chart/range for a specific time window.
- * Falls back to /market_chart with days=1 if range fails.
  */
 const chartCache: Record<string, { data: { time: number; price: number }[]; ts: number }> = {};
-const CHART_CACHE_TTL = 30_000;
+const CHART_CACHE_TTL = 60_000;
 
+/**
+ * Fetch a daily (24h) chart for an asset. Uses the simple /market_chart?days=1 endpoint.
+ * Returns all data points unfiltered — ~288 points at 5-min granularity.
+ */
+export async function fetchDailyChart(
+  coingeckoId: string
+): Promise<{ time: number; price: number }[]> {
+  const cacheKey = `daily-${coingeckoId}`;
+  const cached = chartCache[cacheKey];
+  if (cached && Date.now() - cached.ts < CHART_CACHE_TTL) {
+    return cached.data;
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=1`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+
+    if (!res.ok) throw new Error(`CoinGecko chart: ${res.status}`);
+
+    const data = await res.json();
+    const prices: [number, number][] = data?.prices || [];
+    const result = prices.map(([ts, price]) => ({ time: ts, price }));
+
+    if (result.length > 0) {
+      chartCache[cacheKey] = { data: result, ts: Date.now() };
+      return result;
+    }
+  } catch {
+    // return empty
+  }
+
+  return [];
+}
+
+/**
+ * Fetch price chart for a specific time range using /market_chart/range.
+ * Falls back to filtering the daily chart data.
+ */
 export async function fetchPriceChart(
   coingeckoId: string,
   fromTimestamp: number,
@@ -209,8 +247,8 @@ export async function fetchPriceChart(
     return cached.data;
   }
 
+  // Try range endpoint
   try {
-    // Try range endpoint first (granularity auto-selected by CoinGecko)
     const res = await fetch(
       `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart/range?vs_currency=usd&from=${fromTimestamp}&to=${toTimestamp}`,
       { signal: AbortSignal.timeout(8000) }
@@ -230,18 +268,12 @@ export async function fetchPriceChart(
     // fallback below
   }
 
-  // Fallback: fetch last 1 day at 5-minute granularity
+  // Fallback: use daily chart data filtered to the time range
   try {
-    const res = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=1`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-    const data = await res.json();
-    const prices: [number, number][] = data?.prices || [];
-    const result = prices
-      .map(([ts, price]) => ({ time: ts, price }))
-      .filter((p) => p.time / 1000 >= fromTimestamp && p.time / 1000 <= toTimestamp);
-
+    const daily = await fetchDailyChart(coingeckoId);
+    const fromMs = fromTimestamp * 1000;
+    const toMs = toTimestamp * 1000;
+    const result = daily.filter((p) => p.time >= fromMs && p.time <= toMs);
     if (result.length > 0) {
       chartCache[cacheKey] = { data: result, ts: Date.now() };
       return result;
