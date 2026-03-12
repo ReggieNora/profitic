@@ -217,7 +217,7 @@ function CryptoUpDownForm() {
             <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
             <span className="text-[10px] font-bold text-green-400">LIVE</span>
           </div>
-          <span className="text-[9px] text-gray-600">{priceSource === "coingecko" ? "CoinGecko" : "Cached"}</span>
+          <span className="text-[9px] text-gray-600">{({ pyth: "Pyth", coincap: "CoinCap", coingecko: "CoinGecko", jupiter: "Jupiter", fallback: "Cached" })[priceSource]}</span>
         </div>
       </div>
 

@@ -170,13 +170,16 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       const allAssets = [...CORE_ASSETS, ...trending];
       setAssets(allAssets);
 
-      // Fetch all prices in a single batched request
-      const ids = allAssets.map((a) => a.coingeckoId);
-      const fetchedPrices = await fetchAssetPrices(ids);
+      // Fetch all prices — core via hybrid proxy, meme via Jupiter
+      const coreIds = allAssets.filter((a) => a.type === "core").map((a) => a.coingeckoId);
+      const jupSymbols = allAssets.filter((a) => a.type === "pumpfun" && a.jupiterId).map((a) => a.jupiterId!);
+      const nonCoreIds = allAssets.filter((a) => a.type === "pumpfun" && !a.jupiterId).map((a) => a.coingeckoId);
+      const fetchedPrices = await fetchAssetPrices([...coreIds, ...nonCoreIds], jupSymbols);
 
       const prices: Record<string, number> = { ...fallbackPrices };
       for (const asset of allAssets) {
-        const p = fetchedPrices[asset.coingeckoId];
+        // Check both coingeckoId and jupiterId keys
+        const p = fetchedPrices[asset.coingeckoId] || (asset.jupiterId ? fetchedPrices[asset.jupiterId] : 0);
         if (p && p > 0) {
           prices[asset.symbol] = p;
         } else {
@@ -212,13 +215,15 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     const interval = setInterval(async () => {
       const now = Math.floor(Date.now() / 1000);
 
-      // Refresh prices in a single batched request
+      // Refresh prices — core via hybrid proxy, meme via Jupiter
       const currentAssets = assets;
       const newPrices: Record<string, number> = { ...livePricesRef.current };
-      const ids = currentAssets.map((a) => a.coingeckoId);
-      const fetched = await fetchAssetPrices(ids);
+      const cIds = currentAssets.filter((a) => a.type === "core").map((a) => a.coingeckoId);
+      const jSyms = currentAssets.filter((a) => a.type === "pumpfun" && a.jupiterId).map((a) => a.jupiterId!);
+      const ncIds = currentAssets.filter((a) => a.type === "pumpfun" && !a.jupiterId).map((a) => a.coingeckoId);
+      const fetched = await fetchAssetPrices([...cIds, ...ncIds], jSyms);
       for (const asset of currentAssets) {
-        const p = fetched[asset.coingeckoId];
+        const p = fetched[asset.coingeckoId] || (asset.jupiterId ? fetched[asset.jupiterId] : 0);
         if (p && p > 0) {
           newPrices[asset.symbol] = p;
         }

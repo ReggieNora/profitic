@@ -17,10 +17,14 @@ export interface TradingAsset {
   coingeckoId: string;
   /** Pyth Network feed id (hex) – empty for pump.fun tokens */
   pythFeedId: string;
+  /** Jupiter-compatible id (symbol or mint address) for price lookups */
+  jupiterId?: string;
   /** Available binary intervals in seconds */
   intervals: number[];
   /** Whether this is a core asset or a trending pump.fun token */
   type: "core" | "pumpfun";
+  /** Primary price source for this asset */
+  priceSource: "pyth" | "jupiter" | "coingecko" | "coincap";
   /** Color used in UI accents */
   color: string;
   /** Current USD price (populated at runtime) */
@@ -37,6 +41,7 @@ export const CORE_ASSETS: TradingAsset[] = [
     pythFeedId: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
     intervals: [60, 300, 900], // 1m, 5m, 15m
     type: "core",
+    priceSource: "pyth",
     color: "#F7931A",
   },
   {
@@ -46,6 +51,7 @@ export const CORE_ASSETS: TradingAsset[] = [
     pythFeedId: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
     intervals: [60, 300, 900],
     type: "core",
+    priceSource: "pyth",
     color: "#627EEA",
   },
   {
@@ -55,6 +61,7 @@ export const CORE_ASSETS: TradingAsset[] = [
     pythFeedId: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
     intervals: [60, 300, 900],
     type: "core",
+    priceSource: "pyth",
     color: "#14F195",
   },
 ];
@@ -85,8 +92,10 @@ const PUMP_FUN_FALLBACKS: TradingAsset[] = [
     name: "Frog",
     coingeckoId: "frog-on-solana",
     pythFeedId: "",
+    jupiterId: "FROG",
     intervals: [180], // 3m only
     type: "pumpfun",
+    priceSource: "jupiter",
     color: "#4ADE80",
   },
   {
@@ -94,8 +103,10 @@ const PUMP_FUN_FALLBACKS: TradingAsset[] = [
     name: "Bonk",
     coingeckoId: "bonk",
     pythFeedId: "",
+    jupiterId: "BONK",
     intervals: [180],
     type: "pumpfun",
+    priceSource: "jupiter",
     color: "#FF9F43",
   },
   {
@@ -103,8 +114,10 @@ const PUMP_FUN_FALLBACKS: TradingAsset[] = [
     name: "dogwifhat",
     coingeckoId: "dogwifcoin",
     pythFeedId: "",
+    jupiterId: "WIF",
     intervals: [180],
     type: "pumpfun",
+    priceSource: "jupiter",
     color: "#C084FC",
   },
   {
@@ -112,8 +125,10 @@ const PUMP_FUN_FALLBACKS: TradingAsset[] = [
     name: "Popcat",
     coingeckoId: "popcat",
     pythFeedId: "",
+    jupiterId: "POPCAT",
     intervals: [180],
     type: "pumpfun",
+    priceSource: "jupiter",
     color: "#F472B6",
   },
 ];
@@ -150,8 +165,10 @@ export async function discoverTrendingTokens(count = 3): Promise<TradingAsset[]>
         name: c.item.name,
         coingeckoId: c.item.id,
         pythFeedId: "",
+        jupiterId: c.item.symbol.toUpperCase(),
         intervals: [180], // 3-minute binaries only
         type: "pumpfun",
+        priceSource: "jupiter",
         color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`,
         logoUrl: c.item.large || c.item.small || c.item.thumb,
         price: c.item.data?.price,
@@ -325,13 +342,47 @@ export async function fetchPriceChart(
   return daily;
 }
 
+/**
+ * Fetch price via Jupiter Price API for any Solana token.
+ * Uses symbol or mint address.
+ */
+export async function fetchJupiterPrice(symbolOrMint: string): Promise<number> {
+  const cacheKey = `jup:${symbolOrMint}`;
+  const cached = assetPriceCache[cacheKey];
+  if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
+    return cached.price;
+  }
+
+  try {
+    const res = await fetch(
+      `/api/jupiter-price?ids=${encodeURIComponent(symbolOrMint)}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const price = data?.[symbolOrMint];
+      if (typeof price === "number" && price > 0) {
+        assetPriceCache[cacheKey] = { price, ts: Date.now() };
+        return price;
+      }
+    }
+  } catch {
+    // use cache if available
+  }
+  return cached?.price || 0;
+}
+
+/**
+ * Fetch price for an asset. Uses the hybrid /api/prices endpoint which
+ * cascades through Pyth → CoinCap → CoinGecko for core assets.
+ */
 export async function fetchAssetPrice(coingeckoId: string): Promise<number> {
   const cached = assetPriceCache[coingeckoId];
   if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
     return cached.price;
   }
 
-  // Use server-side proxy
+  // Use server-side proxy (now hybrid: Pyth → CoinCap → CoinGecko)
   try {
     const res = await fetch(
       `/api/prices?ids=${encodeURIComponent(coingeckoId)}`,
@@ -352,40 +403,66 @@ export async function fetchAssetPrice(coingeckoId: string): Promise<number> {
 }
 
 /**
- * Fetch prices for multiple assets in a single batched request via proxy.
+ * Fetch prices for multiple assets in a single batched request.
+ * Splits requests by source: CoinGecko IDs go to /api/prices (hybrid),
+ * Jupiter symbols go to /api/jupiter-price.
  */
 export async function fetchAssetPrices(
-  coingeckoIds: string[]
+  coingeckoIds: string[],
+  jupiterSymbols: string[] = []
 ): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
-  const toFetch: string[] = [];
+  const toFetchCG: string[] = [];
+  const toFetchJup: string[] = [];
 
   for (const id of coingeckoIds) {
     const cached = assetPriceCache[id];
     if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
       result[id] = cached.price;
     } else {
-      toFetch.push(id);
+      toFetchCG.push(id);
     }
   }
 
-  if (toFetch.length > 0) {
-    try {
-      const res = await fetch(
-        `/api/prices?ids=${encodeURIComponent(toFetch.join(","))}`,
-        { signal: AbortSignal.timeout(8000) }
-      );
-      if (res.ok) {
-        const data: Record<string, number> = await res.json();
-        for (const [id, price] of Object.entries(data)) {
-          if (typeof price === "number" && price > 0) {
-            assetPriceCache[id] = { price, ts: Date.now() };
-            result[id] = price;
-          }
-        }
-      }
-    } catch {
-      // use cached values
+  for (const sym of jupiterSymbols) {
+    const cacheKey = `jup:${sym}`;
+    const cached = assetPriceCache[cacheKey];
+    if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
+      result[sym] = cached.price;
+    } else {
+      toFetchJup.push(sym);
+    }
+  }
+
+  // Fetch both in parallel
+  const [cgResult, jupResult] = await Promise.all([
+    toFetchCG.length > 0
+      ? fetch(`/api/prices?ids=${encodeURIComponent(toFetchCG.join(","))}`, {
+          signal: AbortSignal.timeout(8000),
+        })
+          .then((r) => (r.ok ? r.json() : {}))
+          .catch(() => ({}))
+      : Promise.resolve({}),
+    toFetchJup.length > 0
+      ? fetch(`/api/jupiter-price?ids=${encodeURIComponent(toFetchJup.join(","))}`, {
+          signal: AbortSignal.timeout(8000),
+        })
+          .then((r) => (r.ok ? r.json() : {}))
+          .catch(() => ({}))
+      : Promise.resolve({}),
+  ]);
+
+  for (const [id, price] of Object.entries(cgResult as Record<string, number>)) {
+    if (typeof price === "number" && price > 0) {
+      assetPriceCache[id] = { price, ts: Date.now() };
+      result[id] = price;
+    }
+  }
+
+  for (const [sym, price] of Object.entries(jupResult as Record<string, number>)) {
+    if (typeof price === "number" && price > 0) {
+      assetPriceCache[`jup:${sym}`] = { price, ts: Date.now() };
+      result[sym] = price;
     }
   }
 

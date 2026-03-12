@@ -1,10 +1,9 @@
 /**
- * Profitic Backend — Price Oracle Service
+ * Profitic Backend — Hybrid Price Oracle Service
  *
- * Fetches real-time crypto prices from Pyth Network for market resolution.
- * Falls back to CoinGecko if Pyth is unavailable.
- *
- * Supported assets: BTC, ETH, SOL
+ * Fetches real-time crypto prices using a cascading approach:
+ *   Core assets (BTC, ETH, SOL): Pyth Network → CoinCap → CoinGecko
+ *   Meme/pump.fun tokens:        Jupiter Price API → CoinGecko
  *
  * Resolution logic:
  *   - Up/Down: compares start_price to current price at expiry
@@ -30,6 +29,16 @@ const COINGECKO_IDS: Record<string, string> = {
   SOL: "solana",
 };
 
+// CoinCap API IDs (free tier, no auth required)
+const COINCAP_IDS: Record<string, string> = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  SOL: "solana",
+};
+
+// Core assets that have Pyth feeds
+const CORE_ASSETS = new Set(Object.keys(PYTH_FEED_IDS));
+
 // ---------------------------------------------------------------------------
 // Price Result
 // ---------------------------------------------------------------------------
@@ -38,7 +47,7 @@ export interface PriceResult {
   price: number; // USD
   confidence: number; // USD confidence interval
   timestamp: number; // Unix seconds
-  source: "pyth" | "coingecko" | "simulated";
+  source: "pyth" | "coincap" | "coingecko" | "jupiter" | "simulated";
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +70,7 @@ export async function fetchPythPrice(asset: string): Promise<PriceResult | null>
       return null;
     }
 
-    const data = await res.json();
+    const data = await res.json() as { parsed?: Array<{ id: string; price?: { price: string; expo: string; conf: string; publish_time: string } }> };
     const parsed = data?.parsed?.[0];
     if (!parsed?.price) return null;
 
@@ -88,6 +97,43 @@ export async function fetchPythPrice(asset: string): Promise<PriceResult | null>
 }
 
 // ---------------------------------------------------------------------------
+// CoinCap Fallback (for core assets)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the latest price from CoinCap (free API, no key required).
+ */
+export async function fetchCoinCapPrice(asset: string): Promise<PriceResult | null> {
+  const id = COINCAP_IDS[asset.toUpperCase()];
+  if (!id) return null;
+
+  try {
+    const url = `https://api.coincap.io/v2/assets/${id}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+
+    if (!res.ok) {
+      console.warn(`[oracle] CoinCap API returned ${res.status} for ${asset}`);
+      return null;
+    }
+
+    const data = await res.json() as { data?: { priceUsd?: string } };
+    const price = parseFloat(data?.data?.priceUsd ?? "");
+    if (isNaN(price) || price <= 0) return null;
+
+    return {
+      asset: asset.toUpperCase(),
+      price,
+      confidence: 0,
+      timestamp: Math.floor(Date.now() / 1000),
+      source: "coincap",
+    };
+  } catch (err) {
+    console.warn(`[oracle] CoinCap fetch failed for ${asset}:`, err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CoinGecko Fallback
 // ---------------------------------------------------------------------------
 
@@ -107,7 +153,7 @@ export async function fetchCoinGeckoPrice(asset: string): Promise<PriceResult | 
       return null;
     }
 
-    const data = await res.json();
+    const data = await res.json() as Record<string, { usd?: number }>;
     const price = data?.[id]?.usd;
     if (typeof price !== "number") return null;
 
@@ -125,21 +171,72 @@ export async function fetchCoinGeckoPrice(asset: string): Promise<PriceResult | 
 }
 
 // ---------------------------------------------------------------------------
-// Combined Price Fetch (Pyth → CoinGecko → Simulated)
+// Jupiter Price API (for any Solana token, including pump.fun)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the latest price from Jupiter Price API.
+ * Works with token symbols (BONK, WIF) or mint addresses.
+ */
+export async function fetchJupiterPrice(symbolOrMint: string): Promise<PriceResult | null> {
+  try {
+    const url = `https://price.jup.ag/v6/price?ids=${encodeURIComponent(symbolOrMint)}&vsToken=USDC`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+
+    if (!res.ok) {
+      console.warn(`[oracle] Jupiter API returned ${res.status} for ${symbolOrMint}`);
+      return null;
+    }
+
+    const data = await res.json() as { data?: Record<string, { price?: number }> };
+    const entry = data?.data?.[symbolOrMint];
+    if (!entry || typeof entry.price !== "number" || entry.price <= 0) return null;
+
+    return {
+      asset: symbolOrMint.toUpperCase(),
+      price: entry.price,
+      confidence: 0,
+      timestamp: Math.floor(Date.now() / 1000),
+      source: "jupiter",
+    };
+  } catch (err) {
+    console.warn(`[oracle] Jupiter fetch failed for ${symbolOrMint}:`, err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Combined Price Fetch (hybrid cascade)
 // ---------------------------------------------------------------------------
 
 /**
  * Get the current price of a crypto asset.
- * Tries Pyth first, falls back to CoinGecko, then to simulated prices.
+ *
+ * Core assets (BTC, ETH, SOL): Pyth → CoinCap → CoinGecko → Simulated
+ * Other tokens:                 Jupiter → CoinGecko → Simulated
  */
 export async function getPrice(asset: string): Promise<PriceResult> {
-  // Try Pyth first
-  const pythPrice = await fetchPythPrice(asset);
-  if (pythPrice) return pythPrice;
+  const upper = asset.toUpperCase();
 
-  // Fall back to CoinGecko
-  const cgPrice = await fetchCoinGeckoPrice(asset);
-  if (cgPrice) return cgPrice;
+  if (CORE_ASSETS.has(upper)) {
+    // Core asset cascade: Pyth → CoinCap → CoinGecko
+    const pythPrice = await fetchPythPrice(upper);
+    if (pythPrice) return pythPrice;
+
+    const coincapPrice = await fetchCoinCapPrice(upper);
+    if (coincapPrice) return coincapPrice;
+
+    const cgPrice = await fetchCoinGeckoPrice(upper);
+    if (cgPrice) return cgPrice;
+  } else {
+    // Non-core (meme/pump.fun): Jupiter → CoinGecko
+    const jupPrice = await fetchJupiterPrice(asset);
+    if (jupPrice) return jupPrice;
+
+    // Try CoinGecko as fallback (works if the token has a CoinGecko listing)
+    const cgPrice = await fetchCoinGeckoPrice(asset);
+    if (cgPrice) return cgPrice;
+  }
 
   // Last resort: simulated prices (for development/testing)
   console.warn(`[oracle] All price sources failed for ${asset}, using simulated price`);
@@ -149,8 +246,8 @@ export async function getPrice(asset: string): Promise<PriceResult> {
     SOL: 128.5,
   };
   return {
-    asset: asset.toUpperCase(),
-    price: simulated[asset.toUpperCase()] || 0,
+    asset: upper,
+    price: simulated[upper] || 0,
     confidence: 0,
     timestamp: Math.floor(Date.now() / 1000),
     source: "simulated",
