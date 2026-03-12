@@ -188,7 +188,7 @@ export function formatInterval(seconds: number): string {
  * Fetch price for any asset by CoinGecko id.
  */
 const assetPriceCache: Record<string, { price: number; ts: number }> = {};
-const PRICE_CACHE_TTL = 10_000;
+const PRICE_CACHE_TTL = 30_000; // match server cache TTL
 
 /**
  * Fetch historical price chart via server-side proxy (/api/chart) to avoid

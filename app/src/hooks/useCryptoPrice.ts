@@ -18,7 +18,7 @@ interface CryptoPriceResult {
 
 // Module-level cache so all components share the same price data
 const priceCache: Record<string, { price: number; timestamp: number; source: "coingecko" | "fallback" }> = {};
-const CACHE_TTL = 10_000; // 10 seconds
+const CACHE_TTL = 30_000; // 30 seconds — match server cache
 
 /**
  * Hook to fetch live crypto prices via server-side proxy.
@@ -73,7 +73,7 @@ export function useCryptoPrice(asset: CryptoAsset): CryptoPriceResult {
 
   useEffect(() => {
     fetchPrice();
-    const interval = setInterval(fetchPrice, 10_000);
+    const interval = setInterval(fetchPrice, 30_000);
     return () => clearInterval(interval);
   }, [fetchPrice]);
 

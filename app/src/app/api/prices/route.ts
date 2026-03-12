@@ -3,13 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 /**
  * Server-side proxy for CoinGecko price API.
  * Batches multiple asset IDs into a single CoinGecko call.
+ * Returns stale cache on any failure to avoid 502 floods.
  *
  * GET /api/prices?ids=bitcoin,ethereum,solana
  */
 
 let cache: { data: Record<string, number>; ts: number } | null = null;
-const CACHE_TTL = 15_000; // 15 seconds
-let lastIds = "";
+const CACHE_TTL = 30_000; // 30 seconds — CoinGecko free tier allows ~10-30 req/min
 
 export async function GET(req: NextRequest) {
   const ids = req.nextUrl.searchParams.get("ids") || "";
@@ -17,8 +17,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing ids" }, { status: 400 });
   }
 
-  // Return cache if same ids and fresh
-  if (cache && ids === lastIds && Date.now() - cache.ts < CACHE_TTL) {
+  // Return cache if fresh
+  if (cache && Date.now() - cache.ts < CACHE_TTL) {
     return NextResponse.json(cache.data);
   }
 
@@ -32,6 +32,10 @@ export async function GET(req: NextRequest) {
     );
 
     if (!res.ok) {
+      // Return stale cache on rate-limit or any error
+      if (cache) {
+        return NextResponse.json(cache.data);
+      }
       return NextResponse.json(
         { error: `CoinGecko returned ${res.status}` },
         { status: res.status }
@@ -50,16 +54,12 @@ export async function GET(req: NextRequest) {
     }
 
     cache = { data: prices, ts: Date.now() };
-    lastIds = ids;
     return NextResponse.json(prices);
-  } catch (err) {
-    // Return stale cache if available
+  } catch {
+    // Return stale cache on network error
     if (cache) {
       return NextResponse.json(cache.data);
     }
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Fetch failed" },
-      { status: 502 }
-    );
+    return NextResponse.json({ error: "Fetch failed" }, { status: 502 });
   }
 }
