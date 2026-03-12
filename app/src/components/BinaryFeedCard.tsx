@@ -155,19 +155,19 @@ export default function BinaryFeedCard({
       const side = Math.random() < 0.55 ? "up" as const : "down" as const;
       const amount = AMOUNTS[Math.floor(Math.random() * AMOUNTS.length)];
       // Rare chance of a whale order
-      const isWhale = Math.random() < 0.08;
-      const finalAmount = isWhale ? amount * (10 + Math.random() * 40) : amount;
+      const isWhale = Math.random() < 0.1;
+      const finalAmount = isWhale ? amount * (10 + Math.random() * 90) : amount;
       const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
-      // UP bets on left half (5-42%), DOWN bets on right half (50-85%)
-      const x = side === "up" ? 5 + Math.random() * 37 : 50 + Math.random() * 35;
-      const y = 15 + Math.random() * 50;
+      // UP bets on left half (3-42%), DOWN bets on right half (50-88%)
+      const x = side === "up" ? 3 + Math.random() * 39 : 50 + Math.random() * 38;
+      const y = 12 + Math.random() * 55;
       const amountStr = finalAmount >= 100 ? Math.round(finalAmount).toString() : finalAmount.toFixed(finalAmount >= 10 ? 1 : 2);
-      setFloatingBets((prev) => [...prev.slice(-10), { id, x, y, side, amount: amountStr }]);
+      setFloatingBets((prev) => [...prev.slice(-14), { id, x, y, side, amount: amountStr }]);
       setTimeout(() => {
         setFloatingBets((prev) => prev.filter((b) => b.id !== id));
-      }, isWhale ? 3500 : 2200);
+      }, isWhale ? 4500 : 2800);
     };
-    const interval = setInterval(spawn, 1800 + Math.random() * 2400);
+    const interval = setInterval(spawn, 1200 + Math.random() * 1800);
     return () => clearInterval(interval);
   }, [market.id]);
 
@@ -251,7 +251,7 @@ export default function BinaryFeedCard({
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
           <div className="relative" style={{ width: 400, height: 400 }}>
             {/* Logo at base opacity */}
-            <div className="absolute inset-0 flex items-center justify-center opacity-[0.12]">
+            <div className="absolute inset-0 flex items-center justify-center opacity-[0.28]">
               {isCoreAsset ? (
                 <CryptoLogo asset={asset.symbol as "BTC" | "ETH" | "SOL"} size={400} />
               ) : asset.logoUrl ? (
@@ -275,8 +275,8 @@ export default function BinaryFeedCard({
               className={`absolute inset-0 rounded-full ${nearLock ? "animate-timer-pulse" : ""}`}
               style={{
                 background: nearLock
-                  ? `conic-gradient(from 0deg, rgba(239,68,68,0.45) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`
-                  : `conic-gradient(from 0deg, rgba(0,0,0,0.45) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`,
+                  ? `conic-gradient(from 0deg, rgba(239,68,68,0.7) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`
+                  : `conic-gradient(from 0deg, rgba(0,0,0,0.65) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`,
               }}
             />
             {/* Red flash overlay when entering lock zone */}
@@ -352,18 +352,22 @@ export default function BinaryFeedCard({
       <div className="absolute inset-0 z-[2] pointer-events-none overflow-hidden">
         {floatingBets.map((fb) => {
           const amt = parseFloat(fb.amount);
-          // Size tiers: small (<1), medium (1-5), large (5-25), whale (25+)
-          const isLarge = amt >= 5;
+          // Size tiers: small (<1), medium (1-5), large (5-25), massive (25-100), mega (100+)
+          const isMega = amt >= 100;
           const isWhale = amt >= 25;
-          const sizeClass = isWhale
-            ? "px-3.5 py-1.5 text-sm"
+          const isLarge = amt >= 5;
+          const sizeClass = isMega
+            ? "px-5 py-2.5 text-base"
+            : isWhale
+            ? "px-4 py-2 text-sm"
             : isLarge
             ? "px-3 py-1 text-xs"
             : amt >= 1
             ? "px-2.5 py-0.5 text-[11px]"
             : "px-2 py-0.5 text-[10px]";
           const animClass = fb.side === "up" ? "animate-float-bet-up" : "animate-float-bet-down";
-          const whaleAnimClass = isWhale ? "animate-whale-pulse" : "";
+          const whaleAnimClass = isMega ? "animate-mega-pulse" : isWhale ? "animate-whale-pulse" : "";
+          const isGreen = fb.side === "up";
 
           return (
             <div
@@ -372,17 +376,38 @@ export default function BinaryFeedCard({
               style={{ left: `${fb.x}%`, top: `${fb.y}%` }}
             >
               <div className="relative">
-                {/* Whale ring burst */}
-                {isWhale && (
-                  <span className={`absolute inset-0 rounded-full animate-whale-ring ${
-                    fb.side === "up" ? "bg-green-400/30" : "bg-red-400/30"
-                  }`} />
+                {/* Mega — triple ring burst + screen flash */}
+                {isMega && (
+                  <>
+                    <span className={`absolute inset-0 rounded-full animate-whale-ring-fast ${isGreen ? "bg-green-400/50" : "bg-red-400/50"}`} />
+                    <span className={`absolute inset-0 rounded-full animate-whale-ring-delayed ${isGreen ? "bg-green-400/30" : "bg-red-400/30"}`} />
+                    <span className={`absolute inset-0 rounded-full animate-whale-ring-slow ${isGreen ? "bg-green-400/20" : "bg-red-400/20"}`} />
+                  </>
                 )}
-                <span className={`relative inline-flex items-center gap-0.5 rounded-full font-bold shadow-lg ${sizeClass} ${whaleAnimClass} ${
-                  fb.side === "up"
-                    ? "bg-green-500/20 text-green-400 shadow-green-500/10"
-                    : "bg-red-500/20 text-red-400 shadow-red-500/10"
-                } ${isWhale ? "ring-1 " + (fb.side === "up" ? "ring-green-400/40" : "ring-red-400/40") : ""}`}>
+                {/* Whale — double ring burst */}
+                {isWhale && !isMega && (
+                  <>
+                    <span className={`absolute inset-0 rounded-full animate-whale-ring-fast ${isGreen ? "bg-green-400/40" : "bg-red-400/40"}`} />
+                    <span className={`absolute inset-0 rounded-full animate-whale-ring-delayed ${isGreen ? "bg-green-400/20" : "bg-red-400/20"}`} />
+                  </>
+                )}
+                {/* Large — single subtle ring */}
+                {isLarge && !isWhale && (
+                  <span className={`absolute inset-0 rounded-full animate-whale-ring-fast ${isGreen ? "bg-green-400/15" : "bg-red-400/15"}`} />
+                )}
+                {/* Glow backdrop for whales */}
+                {isWhale && (
+                  <span className={`absolute -inset-3 rounded-full blur-xl ${
+                    isGreen ? "bg-green-500/30" : "bg-red-500/30"
+                  } ${isMega ? "animate-mega-glow -inset-5" : "animate-whale-glow"}`} />
+                )}
+                <span className={`relative inline-flex items-center gap-0.5 rounded-full font-black shadow-lg backdrop-blur-sm ${sizeClass} ${whaleAnimClass} ${
+                  isGreen
+                    ? "bg-green-500/25 text-green-400 shadow-green-500/20"
+                    : "bg-red-500/25 text-red-400 shadow-red-500/20"
+                } ${isMega ? "ring-2 " + (isGreen ? "ring-green-400/60" : "ring-red-400/60")
+                  : isWhale ? "ring-1 " + (isGreen ? "ring-green-400/40" : "ring-red-400/40")
+                  : ""}`}>
                   {fb.side === "up" ? "↑" : "↓"} {fb.amount} SOL
                 </span>
               </div>
