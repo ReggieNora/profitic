@@ -129,42 +129,43 @@ export interface UseBinaryMarketsReturn {
   loading: boolean;
 }
 
+// Compute initial markets at module level so they're available on first render
+function createInitialState() {
+  const now = Math.floor(Date.now() / 1000);
+  const prices: Record<string, number> = {};
+  const initialMarkets: BinaryMarket[] = [];
+  const counters: Record<string, number> = {};
+
+  for (const asset of CORE_ASSETS) {
+    const price = FALLBACK_PRICES[asset.coingeckoId] || 0.01;
+    prices[asset.symbol] = price;
+    for (const iv of asset.intervals) {
+      const key = `${asset.symbol}-${iv}`;
+      counters[key] = 1;
+      initialMarkets.push(createMarket(asset, iv, 1, price, now));
+    }
+  }
+
+  return { prices, initialMarkets, counters };
+}
+
 export function useBinaryMarkets(): UseBinaryMarketsReturn {
-  const [markets, setMarkets] = useState<BinaryMarket[]>([]);
+  const [initialState] = useState(createInitialState);
+  const [markets, setMarkets] = useState<BinaryMarket[]>(initialState.initialMarkets);
   const [assets, setAssets] = useState<TradingAsset[]>(CORE_ASSETS);
-  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
+  const [livePrices, setLivePrices] = useState<Record<string, number>>(initialState.prices);
+  const [loading] = useState(false);
   const [roundHistory, setRoundHistory] = useState<Record<string, CompletedRound[]>>({});
   const initialized = useRef(false);
-  const roundCounters = useRef<Record<string, number>>({});
+  const roundCounters = useRef<Record<string, number>>(initialState.counters);
   const livePricesRef = useRef(livePrices);
   livePricesRef.current = livePrices;
 
-  // Initialize: render immediately with fallback prices, then fetch real data in background
+  // Fetch real prices + trending tokens in background after mount
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
-    // Phase 1: Render instantly with core assets + fallback prices
-    const now = Math.floor(Date.now() / 1000);
-    const fallbackPrices: Record<string, number> = {};
-    const initialMarkets: BinaryMarket[] = [];
-
-    for (const asset of CORE_ASSETS) {
-      const price = FALLBACK_PRICES[asset.coingeckoId] || 0.01;
-      fallbackPrices[asset.symbol] = price;
-      for (const iv of asset.intervals) {
-        const key = `${asset.symbol}-${iv}`;
-        roundCounters.current[key] = 1;
-        initialMarkets.push(createMarket(asset, iv, 1, price, now));
-      }
-    }
-
-    setLivePrices(fallbackPrices);
-    setMarkets(initialMarkets);
-    setLoading(false);
-
-    // Phase 2: Fetch real prices + trending tokens in background
     const fetchRealData = async () => {
       // Discover trending tokens (non-blocking)
       const trending = await discoverTrendingTokens(3);
@@ -179,7 +180,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         })
       );
 
-      const prices: Record<string, number> = { ...fallbackPrices };
+      const prices: Record<string, number> = { ...initialState.prices };
       priceEntries.forEach((result) => {
         if (result.status === "fulfilled") {
           const [sym, price] = result.value;
