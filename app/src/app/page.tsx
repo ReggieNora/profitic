@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useBinaryMarkets, BinaryMarket } from "@/hooks/useBinaryMarkets";
 import BinaryFeedCard from "@/components/BinaryFeedCard";
 import BinaryDetailModal from "@/components/BinaryDetailModal";
 import BinaryChatPanel from "@/components/BinaryChatPanel";
+
+const DEFAULT_INTERVAL = 300; // 5 min default
 
 export default function HomePage() {
   const { connected } = useWallet();
@@ -13,7 +15,35 @@ export default function HomePage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expandedMarket, setExpandedMarket] = useState<BinaryMarket | null>(null);
   const [chatMarket, setChatMarket] = useState<BinaryMarket | null>(null);
+  // Track selected interval per asset symbol
+  const [selectedIntervals, setSelectedIntervals] = useState<Record<string, number>>({});
   const feedRef = useRef<HTMLDivElement>(null);
+
+  // Group markets by asset symbol
+  const assetGroups = useMemo(() => {
+    const groups: Record<string, BinaryMarket[]> = {};
+    for (const m of markets) {
+      if (!groups[m.asset.symbol]) groups[m.asset.symbol] = [];
+      groups[m.asset.symbol].push(m);
+    }
+    return groups;
+  }, [markets]);
+
+  // One visible market per asset: pick the selected interval (or default)
+  const feedMarkets = useMemo(() => {
+    const result: BinaryMarket[] = [];
+    const seen = new Set<string>();
+    // Preserve original ordering by iterating markets in order
+    for (const m of markets) {
+      if (seen.has(m.asset.symbol)) continue;
+      seen.add(m.asset.symbol);
+      const group = assetGroups[m.asset.symbol] || [];
+      const preferred = selectedIntervals[m.asset.symbol] ?? DEFAULT_INTERVAL;
+      const match = group.find((g) => g.interval === preferred) || group[0];
+      if (match) result.push(match);
+    }
+    return result;
+  }, [markets, assetGroups, selectedIntervals]);
 
   const handleBet = (marketId: string, side: "up" | "down", amount: number) => {
     if (!connected) {
@@ -23,6 +53,10 @@ export default function HomePage() {
     placeBet(marketId, side, amount);
   };
 
+  const handleIntervalChange = useCallback((symbol: string, interval: number) => {
+    setSelectedIntervals((prev) => ({ ...prev, [symbol]: interval }));
+  }, []);
+
   // Track which card is in view
   const handleScroll = useCallback(() => {
     if (!feedRef.current) return;
@@ -30,8 +64,8 @@ export default function HomePage() {
     const scrollTop = container.scrollTop;
     const cardHeight = container.clientHeight;
     const index = Math.round(scrollTop / cardHeight);
-    setCurrentIndex(Math.min(index, Math.max(0, markets.length - 1)));
-  }, [markets.length]);
+    setCurrentIndex(Math.min(index, Math.max(0, feedMarkets.length - 1)));
+  }, [feedMarkets.length]);
 
   useEffect(() => {
     const container = feedRef.current;
@@ -40,7 +74,7 @@ export default function HomePage() {
     return () => container.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
-  const allLoaded = !loading && markets.length > 0;
+  const allLoaded = !loading && feedMarkets.length > 0;
 
   return (
     <div className="relative -mt-14 h-screen w-full overflow-hidden bg-black">
@@ -60,9 +94,9 @@ export default function HomePage() {
           ref={feedRef}
           className="feed-scroll h-full snap-y snap-mandatory overflow-y-scroll"
         >
-          {markets.map((market, i) => (
+          {feedMarkets.map((market, i) => (
             <div
-              key={market.id}
+              key={market.asset.symbol}
               className="h-full w-full snap-start snap-always"
             >
               <BinaryFeedCard
@@ -72,6 +106,9 @@ export default function HomePage() {
                 onTrade={() => setExpandedMarket(market)}
                 onChat={() => setChatMarket(market)}
                 isActive={i === currentIndex}
+                availableIntervals={market.asset.intervals}
+                activeInterval={selectedIntervals[market.asset.symbol] ?? DEFAULT_INTERVAL}
+                onIntervalChange={(interval) => handleIntervalChange(market.asset.symbol, interval)}
               />
             </div>
           ))}
@@ -81,9 +118,9 @@ export default function HomePage() {
       {/* Dot indicators */}
       {allLoaded && (
         <div className="absolute right-4 top-1/2 z-20 -translate-y-1/2 flex flex-col gap-2">
-          {markets.map((market, i) => (
+          {feedMarkets.map((market, i) => (
             <button
-              key={market.id}
+              key={market.asset.symbol}
               onClick={() => {
                 feedRef.current?.scrollTo({
                   top: i * (feedRef.current?.clientHeight || 0),
@@ -95,7 +132,7 @@ export default function HomePage() {
                   ? "bg-white scale-125"
                   : "bg-white/30 hover:bg-white/50"
               }`}
-              title={`${market.asset.symbol} ${market.intervalLabel}`}
+              title={market.asset.symbol}
             />
           ))}
         </div>
@@ -111,7 +148,7 @@ export default function HomePage() {
       )}
 
       {/* Desktop nav arrows */}
-      {allLoaded && markets.length > 1 && (
+      {allLoaded && feedMarkets.length > 1 && (
         <div className="absolute bottom-8 right-4 z-20 hidden flex-col gap-2 md:flex">
           <button
             onClick={() => {
@@ -136,7 +173,7 @@ export default function HomePage() {
                 behavior: "smooth",
               });
             }}
-            disabled={currentIndex >= markets.length - 1}
+            disabled={currentIndex >= feedMarkets.length - 1}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/20 disabled:opacity-30"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

@@ -15,6 +15,9 @@ interface BinaryFeedCardProps {
   onTrade: () => void;
   onChat: () => void;
   isActive: boolean;
+  availableIntervals?: number[];
+  activeInterval?: number;
+  onIntervalChange?: (interval: number) => void;
 }
 
 const QUICK_AMOUNTS = [0.5, 1, 5, 10];
@@ -38,6 +41,8 @@ export interface PricePoint {
   ts: number;
 }
 
+const INTERVAL_LABELS: Record<number, string> = { 60: "1m", 300: "5m", 900: "15m", 180: "3m" };
+
 export default function BinaryFeedCard({
   market,
   livePrice,
@@ -45,7 +50,11 @@ export default function BinaryFeedCard({
   onTrade,
   onChat,
   isActive,
+  availableIntervals,
+  activeInterval,
+  onIntervalChange,
 }: BinaryFeedCardProps) {
+  const [showIntervalPicker, setShowIntervalPicker] = useState(false);
   const [betAmount, setBetAmount] = useState("");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [countdown, setCountdown] = useState("");
@@ -172,6 +181,7 @@ export default function BinaryFeedCard({
   };
 
   const handleDoubleTap = useCallback(() => {
+    setShowIntervalPicker(false);
     const now = Date.now();
     if (now - lastTapRef.current < 300) {
       if (!liked) setLiked(true);
@@ -442,6 +452,51 @@ export default function BinaryFeedCard({
             </svg>
           </div>
         </div>
+
+        {/* Interval Switcher (clock button) — core assets only */}
+        {availableIntervals && availableIntervals.length > 1 && onIntervalChange && (
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowIntervalPicker((p) => !p); }}
+              className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
+                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <span className="text-[10px] font-bold text-white">
+                {INTERVAL_LABELS[activeInterval ?? market.interval] ?? `${(activeInterval ?? market.interval) / 60}m`}
+              </span>
+            </button>
+
+            {/* Interval picker popout */}
+            {showIntervalPicker && (
+              <div className="absolute right-12 top-0 z-30 flex items-center gap-1 rounded-full bg-surface-300/90 px-1.5 py-1 shadow-xl backdrop-blur-md border border-white/10 animate-fade-up">
+                {availableIntervals.map((iv) => {
+                  const isSelected = iv === (activeInterval ?? market.interval);
+                  return (
+                    <button
+                      key={iv}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onIntervalChange(iv);
+                        setShowIntervalPicker(false);
+                      }}
+                      className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all ${
+                        isSelected
+                          ? "bg-primary-500 text-white shadow-lg shadow-primary-500/30"
+                          : "text-white/60 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {INTERVAL_LABELS[iv] ?? `${iv / 60}m`}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Heart/Like */}
         <button
