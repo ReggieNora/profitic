@@ -58,6 +58,7 @@ export default function BinaryFeedCard({
   activeInterval,
   onIntervalChange,
 }: BinaryFeedCardProps) {
+  const [showIntervalPicker, setShowIntervalPicker] = useState(false);
   const [betAmount, setBetAmount] = useState("");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [countdown, setCountdown] = useState("");
@@ -189,6 +190,7 @@ export default function BinaryFeedCard({
   };
 
   const handleDoubleTap = useCallback(() => {
+    setShowIntervalPicker(false);
     const now = Date.now();
     if (now - lastTapRef.current < 300) {
       if (!liked) setLiked(true);
@@ -491,9 +493,12 @@ export default function BinaryFeedCard({
 
       {/* Right sidebar — TikTok-style action buttons */}
       <div className="absolute bottom-44 right-3 z-20 flex flex-col items-center gap-5 sm:right-5">
-        {/* Asset avatar */}
-        <div className="relative">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-primary ring-2 ring-black/40 transition-transform active:scale-90 overflow-hidden">
+        {/* Asset avatar — opens round history */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onRoundHistory?.(); }}
+          className="relative transition-transform active:scale-90"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-primary ring-2 ring-black/40 overflow-hidden">
             {isCoreAsset ? (
               <CryptoLogo asset={asset.symbol as "BTC" | "ETH" | "SOL"} size={28} />
             ) : asset.logoUrl ? (
@@ -502,30 +507,63 @@ export default function BinaryFeedCard({
               <span className="text-xs font-black text-white">{asset.symbol.slice(0, 3)}</span>
             )}
           </div>
-          <div className="absolute -bottom-1 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full bg-primary-500 text-white">
-            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-          </div>
-        </div>
+          {(completedRounds ?? 0) > 0 ? (
+            <div className="absolute -bottom-1 left-1/2 flex h-5 min-w-[20px] -translate-x-1/2 items-center justify-center rounded-full bg-primary-500 px-1 text-[9px] font-bold text-white">
+              {completedRounds}
+            </div>
+          ) : (
+            <div className="absolute -bottom-1 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full bg-primary-500 text-white">
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </div>
+          )}
+        </button>
 
-        {/* Round History (clock button) */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onRoundHistory?.(); }}
-          className="flex flex-col items-center gap-1 transition-transform active:scale-90"
-        >
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
-            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {(completedRounds ?? 0) > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary-500 px-1 text-[9px] font-bold text-white">
-                {completedRounds}
+        {/* Interval Switcher (clock button) — core assets only */}
+        {availableIntervals && availableIntervals.length > 1 && onIntervalChange && (
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowIntervalPicker((p) => !p); }}
+              className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
+                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <span className="text-[10px] font-bold text-white">
+                {INTERVAL_LABELS[activeInterval ?? market.interval] ?? `${(activeInterval ?? market.interval) / 60}m`}
               </span>
+            </button>
+
+            {/* Interval picker popout */}
+            {showIntervalPicker && (
+              <div className="absolute right-12 top-0 z-30 flex items-center gap-1 rounded-full bg-surface-300/90 px-1.5 py-1 shadow-xl backdrop-blur-md border border-white/10 animate-fade-up">
+                {availableIntervals.map((iv) => {
+                  const isSelected = iv === (activeInterval ?? market.interval);
+                  return (
+                    <button
+                      key={iv}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onIntervalChange(iv);
+                        setShowIntervalPicker(false);
+                      }}
+                      className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all ${
+                        isSelected
+                          ? "bg-primary-500 text-white shadow-lg shadow-primary-500/30"
+                          : "text-white/60 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {INTERVAL_LABELS[iv] ?? `${iv / 60}m`}
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
-          <span className="text-[10px] font-bold text-white">History</span>
-        </button>
+        )}
 
         {/* Heart/Like */}
         <button
