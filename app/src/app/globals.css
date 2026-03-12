@@ -376,6 +376,27 @@ body {
   animation: mega-glow 2s ease-out forwards;
 }
 
+/* ── Yield Farm animations ── */
+
+@keyframes slide-in {
+  0% { opacity: 0; transform: translateY(-8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+@keyframes reward-tick {
+  0% { color: rgb(250 204 21); }
+  50% { color: rgb(74 222 128); }
+  100% { color: rgb(250 204 21); }
+}
+
+.animate-reward-tick {
+  animation: reward-tick 1s ease-in-out;
+}
+
 /* ── NYSE dot-matrix ticker ── */
 
 .ticker-wrap {
