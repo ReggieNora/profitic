@@ -5,12 +5,11 @@ import {
   AreaChart, Area, YAxis,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { BinaryRound, CryptoAsset, CRYPTO_ASSETS } from "@/types";
+import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { CryptoLogo } from "./CryptoLogos";
-import { PricePoint } from "./BinaryRoundCard";
 
 interface BinaryFeedCardProps {
-  round: BinaryRound;
+  market: BinaryMarket;
   livePrice: number;
   onBet: (side: "up" | "down", amount: number) => void;
   onTrade: () => void;
@@ -20,9 +19,9 @@ interface BinaryFeedCardProps {
 
 const QUICK_AMOUNTS = [0.5, 1, 5, 10];
 
-const JITTER_BPS: Record<CryptoAsset, number> = { BTC: 3, ETH: 5, SOL: 8 };
-function jitteredPrice(base: number, asset: CryptoAsset): number {
-  const bps = JITTER_BPS[asset];
+const JITTER_MAP: Record<string, number> = { BTC: 3, ETH: 5, SOL: 8 };
+function jitteredPrice(base: number, symbol: string): number {
+  const bps = JITTER_MAP[symbol] ?? 12;
   return base * (1 + (Math.random() - 0.5) * 2 * (bps / 10000));
 }
 
@@ -33,8 +32,14 @@ function formatLamports(l: number): string {
   return sol.toFixed(3);
 }
 
+export interface PricePoint {
+  time: string;
+  price: number;
+  ts: number;
+}
+
 export default function BinaryFeedCard({
-  round,
+  market,
   livePrice,
   onBet,
   onTrade,
@@ -59,17 +64,19 @@ export default function BinaryFeedCard({
   const driftRef = useRef(0);
   const lastTapRef = useRef(0);
 
-  const assetMeta = CRYPTO_ASSETS.find((a) => a.value === round.asset)!;
-  const currentPrice = livePrice > 0 ? livePrice : round.startPrice;
+  const { asset } = market;
+  const isCoreAsset = asset.type === "core" && (asset.symbol === "BTC" || asset.symbol === "ETH" || asset.symbol === "SOL");
+  const intervalLabel = market.intervalLabel;
+  const currentPrice = livePrice > 0 ? livePrice : market.entryPrice;
   const displayPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : currentPrice;
-  const isAboveStart = displayPrice >= round.startPrice;
+  const isAboveStart = displayPrice >= market.entryPrice;
   const priceChangePct =
-    round.startPrice > 0
-      ? ((displayPrice - round.startPrice) / round.startPrice) * 100
+    market.entryPrice > 0
+      ? ((displayPrice - market.entryPrice) / market.entryPrice) * 100
       : 0;
 
-  const upSol = round.upPool / 1_000_000_000;
-  const downSol = round.downPool / 1_000_000_000;
+  const upSol = market.upPool / 1_000_000_000;
+  const downSol = market.downPool / 1_000_000_000;
   const totalSol = upSol + downSol;
   const upPayout = downSol > 0 ? (totalSol * 0.98) / upSol : 0;
   const downPayout = upSol > 0 ? (totalSol * 0.98) / downSol : 0;
@@ -79,43 +86,40 @@ export default function BinaryFeedCard({
   useEffect(() => {
     const tick = () => {
       const now = Math.floor(Date.now() / 1000);
-      const remaining = Math.max(0, round.endTime - now);
+      const remaining = Math.max(0, market.endTime - now);
       const m = Math.floor(remaining / 60);
       const s = remaining % 60;
       setCountdown(`${m}:${s.toString().padStart(2, "0")}`);
 
-      // Timer percentage: how much of the round has elapsed (0→100)
-      const elapsed = Math.max(0, now - round.startTime);
-      const pct = Math.min(100, (elapsed / round.duration) * 100);
+      const elapsed = Math.max(0, now - market.startTime);
+      const pct = Math.min(100, (elapsed / market.interval) * 100);
       setTimerPct(pct);
 
-      // Post-lock: bets are locked, count down the final 30s to resolution
-      const timeToLock = round.lockTime - now;
-      const timeSinceLock = now - round.lockTime;
+      const timeToLock = market.lockTime - now;
+      const timeSinceLock = now - market.lockTime;
       const isPostLock = timeToLock <= 0 && remaining > 0;
-      const lockSecsLeft = isPostLock ? Math.max(0, round.endTime - now) : null;
+      const lockSecsLeft = isPostLock ? Math.max(0, market.endTime - now) : null;
       setNearLock(isPostLock);
       setLockCountdown(lockSecsLeft !== null ? Math.ceil(lockSecsLeft) : null);
 
-      // Flash red when bets first lock
       if (timeSinceLock >= 0 && timeSinceLock < 1) {
         setLockFlash(true);
         setTimeout(() => setLockFlash(false), 600);
       }
     };
     tick();
-    const interval = setInterval(tick, 200); // faster tick for smooth pulse
+    const interval = setInterval(tick, 200);
     return () => clearInterval(interval);
-  }, [round.endTime, round.startTime, round.duration, round.lockTime]);
+  }, [market.endTime, market.startTime, market.interval, market.lockTime]);
 
   // Reset on round change
   useEffect(() => {
     setPriceHistory([]);
     lastApiPrice.current = 0;
     driftRef.current = 0;
-  }, [round.id]);
+  }, [market.id]);
 
-  // Accumulate chart data from mount (all cards build data in background)
+  // Accumulate chart data
   useEffect(() => {
     if (currentPrice <= 0) return;
     if (currentPrice !== lastApiPrice.current) {
@@ -124,7 +128,7 @@ export default function BinaryFeedCard({
     }
     const addPoint = () => {
       const base = driftRef.current || currentPrice;
-      const jittered = jitteredPrice(base, round.asset);
+      const jittered = jitteredPrice(base, asset.symbol);
       driftRef.current = jittered;
       const now = new Date();
       const time = `${now.getMinutes()}:${now.getSeconds().toString().padStart(2, "0")}`;
@@ -133,29 +137,28 @@ export default function BinaryFeedCard({
     addPoint();
     const interval = setInterval(addPoint, 2000);
     return () => clearInterval(interval);
-  }, [currentPrice, round.asset, round.id]);
+  }, [currentPrice, asset.symbol, market.id]);
 
-  // Floating bet popups — random bets appear on the chart and fade out
+  // Floating bet popups
   useEffect(() => {
     const AMOUNTS = ["0.1", "0.25", "0.5", "1", "2", "5", "0.3", "0.75", "1.5", "3"];
     const spawn = () => {
       const side = Math.random() < 0.55 ? "up" as const : "down" as const;
       const amount = AMOUNTS[Math.floor(Math.random() * AMOUNTS.length)];
       const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
-      const x = 10 + Math.random() * 70; // 10-80% from left
-      const y = 15 + Math.random() * 50; // 15-65% from top
+      const x = 10 + Math.random() * 70;
+      const y = 15 + Math.random() * 50;
       setFloatingBets((prev) => [...prev.slice(-8), { id, x, y, side, amount }]);
-      // Auto-remove after animation
       setTimeout(() => {
         setFloatingBets((prev) => prev.filter((b) => b.id !== id));
       }, 2200);
     };
     const interval = setInterval(spawn, 1800 + Math.random() * 2400);
     return () => clearInterval(interval);
-  }, [round.id]);
+  }, [market.id]);
 
   const prices = priceHistory.map((p) => p.price);
-  prices.push(round.startPrice);
+  prices.push(market.entryPrice);
   const minP = Math.min(...prices);
   const maxP = Math.max(...prices);
   const range = maxP - minP;
@@ -163,7 +166,7 @@ export default function BinaryFeedCard({
 
   const handleBet = (side: "up" | "down") => {
     const amt = parseFloat(betAmount) || 0;
-    if (amt <= 0 || round.phase !== "betting") return;
+    if (amt <= 0 || market.phase !== "betting") return;
     onBet(side, amt);
     setBetAmount("");
   };
@@ -183,8 +186,8 @@ export default function BinaryFeedCard({
     try {
       if (navigator.share) {
         await navigator.share({
-          title: `${assetMeta.label} Binary Market`,
-          text: `${round.asset} is ${isAboveStart ? "UP" : "DOWN"} ${Math.abs(priceChangePct).toFixed(3)}%`,
+          title: `${asset.name} Binary Market`,
+          text: `${asset.symbol} is ${isAboveStart ? "UP" : "DOWN"} ${Math.abs(priceChangePct).toFixed(3)}%`,
           url,
         });
         return;
@@ -192,11 +195,9 @@ export default function BinaryFeedCard({
     } catch {
       // share cancelled or unavailable
     }
-    // Clipboard fallback (works in more contexts)
     try {
       await navigator.clipboard.writeText(url);
     } catch {
-      // Manual fallback for non-secure contexts
       const ta = document.createElement("textarea");
       ta.value = url;
       ta.style.position = "fixed";
@@ -208,6 +209,13 @@ export default function BinaryFeedCard({
     }
     setShared(true);
     setTimeout(() => setShared(false), 2000);
+  };
+
+  const formatUsd = (v: number) => {
+    if (v >= 10000) return `$${(v / 1000).toFixed(1)}k`;
+    if (v >= 1) return `$${v.toFixed(2)}`;
+    if (v >= 0.01) return `$${v.toFixed(4)}`;
+    return `$${v.toFixed(8)}`;
   };
 
   const progressPct = timerPct;
@@ -228,10 +236,26 @@ export default function BinaryFeedCard({
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
           <div className="relative" style={{ width: 400, height: 400 }}>
             {/* Logo at base opacity */}
-            <div className="absolute inset-0 opacity-[0.12]">
-              <CryptoLogo asset={round.asset} size={400} />
+            <div className="absolute inset-0 flex items-center justify-center opacity-[0.12]">
+              {isCoreAsset ? (
+                <CryptoLogo asset={asset.symbol as "BTC" | "ETH" | "SOL"} size={400} />
+              ) : asset.logoUrl ? (
+                <img
+                  src={asset.logoUrl}
+                  alt={asset.symbol}
+                  className="h-[400px] w-[400px] rounded-full object-cover"
+                  draggable={false}
+                />
+              ) : (
+                <div
+                  className="flex h-[400px] w-[400px] items-center justify-center rounded-full text-[120px] font-black text-white"
+                  style={{ backgroundColor: asset.color }}
+                >
+                  {asset.symbol.slice(0, 2)}
+                </div>
+              )}
             </div>
-            {/* Conic-gradient timer overlay — fills clockwise over entire logo */}
+            {/* Conic-gradient timer overlay */}
             <div
               className={`absolute inset-0 rounded-full ${nearLock ? "animate-timer-pulse" : ""}`}
               style={{
@@ -256,18 +280,18 @@ export default function BinaryFeedCard({
         </div>
       </div>
 
-      {/* Background chart — fills entire card, above watermark */}
+      {/* Background chart */}
       <div className="absolute inset-0 z-[1] pointer-events-none">
         {priceHistory.length >= 2 ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={priceHistory} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id={`feed-grad-${round.id}-up`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={`feed-grad-${market.id}-up`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
                   <stop offset="60%" stopColor="#10b981" stopOpacity={0.08} />
                   <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id={`feed-grad-${round.id}-down`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={`feed-grad-${market.id}-down`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#ef4444" stopOpacity={0.35} />
                   <stop offset="60%" stopColor="#ef4444" stopOpacity={0.08} />
                   <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
@@ -275,13 +299,13 @@ export default function BinaryFeedCard({
               </defs>
               <YAxis domain={[minP - pad, maxP + pad]} hide />
               <ReferenceLine
-                y={round.startPrice}
+                y={market.entryPrice}
                 stroke="#facc15"
                 strokeDasharray="10 6"
                 strokeWidth={2.5}
                 strokeOpacity={0.8}
                 label={{
-                  value: `▸ START $${round.startPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                  value: `▸ START ${formatUsd(market.entryPrice)}`,
                   fill: "#facc15",
                   fontSize: 13,
                   fontWeight: 800,
@@ -294,7 +318,7 @@ export default function BinaryFeedCard({
                 dataKey="price"
                 stroke={isAboveStart ? "#10b981" : "#ef4444"}
                 strokeWidth={2.5}
-                fill={isAboveStart ? `url(#feed-grad-${round.id}-up)` : `url(#feed-grad-${round.id}-down)`}
+                fill={isAboveStart ? `url(#feed-grad-${market.id}-up)` : `url(#feed-grad-${market.id}-down)`}
                 dot={false}
                 isAnimationActive={false}
               />
@@ -328,22 +352,27 @@ export default function BinaryFeedCard({
         ))}
       </div>
 
-      {/* Top bar — timer only (no logo/name, moved to center) */}
+      {/* Top bar */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between p-5 pt-6">
         <div className="flex items-center gap-2">
           <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase backdrop-blur-sm ${
-            round.phase === "betting" ? "bg-green-500/20 text-green-400" :
-            round.phase === "locked" ? "bg-yellow-500/20 text-yellow-400" :
-            round.phase === "complete" ? "bg-gray-500/20 text-gray-400" :
+            market.phase === "betting" ? "bg-green-500/20 text-green-400" :
+            market.phase === "locked" ? "bg-yellow-500/20 text-yellow-400" :
+            market.phase === "complete" ? "bg-gray-500/20 text-gray-400" :
             "bg-blue-500/20 text-blue-400"
           }`}>
-            {round.phase === "betting" ? "OPEN" : round.phase.toUpperCase()}
+            {market.phase === "betting" ? "OPEN" : market.phase.toUpperCase()}
           </span>
           <span className="text-xs text-white/40">
-            Round #{round.roundNumber} &middot; 5 min
+            Round #{market.roundNumber} &middot; {intervalLabel}
           </span>
+          {!isCoreAsset && (
+            <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-[9px] font-bold text-purple-400 backdrop-blur-sm">
+              PUMP.FUN
+            </span>
+          )}
         </div>
-        {round.phase !== "complete" && (
+        {market.phase !== "complete" && (
           <div className="flex items-center gap-2">
             <div className="h-1.5 w-20 overflow-hidden rounded-full bg-white/10 backdrop-blur-sm">
               <div
@@ -360,11 +389,17 @@ export default function BinaryFeedCard({
 
       {/* Center — asset name + large live price */}
       <div className="absolute left-0 right-0 top-1/3 z-10 flex flex-col items-center -translate-y-1/2">
-        <h2 className="mb-1 text-lg font-black uppercase tracking-widest text-white/70 drop-shadow-lg sm:text-xl">
-          {assetMeta.label}
-        </h2>
+        <div className="mb-1 flex items-center gap-2">
+          {/* Small logo next to name for pumpfun tokens */}
+          {!isCoreAsset && asset.logoUrl && (
+            <img src={asset.logoUrl} alt={asset.symbol} className="h-6 w-6 rounded-full ring-1 ring-white/20" />
+          )}
+          <h2 className="text-lg font-black uppercase tracking-widest text-white/70 drop-shadow-lg sm:text-xl">
+            {asset.name}
+          </h2>
+        </div>
         <span className="text-4xl font-black tabular-nums text-white drop-shadow-lg sm:text-5xl">
-          ${displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {formatUsd(displayPrice)}
         </span>
         <div className="mt-2 flex items-center gap-2">
           <span className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-green-400 backdrop-blur-sm">
@@ -380,9 +415,11 @@ export default function BinaryFeedCard({
         <div className="mt-2 flex items-center justify-center gap-1.5">
           <span className="inline-block h-2 w-5 rounded-full border border-yellow-400/60 bg-yellow-400/20" />
           <span className="text-[11px] font-bold text-yellow-400/80">
-            Start ${round.startPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            Start {formatUsd(market.entryPrice)}
           </span>
-          <span className="text-[10px] text-white/30">&middot; Pyth Oracle</span>
+          <span className="text-[10px] text-white/30">
+            &middot; {isCoreAsset ? "Pyth Oracle" : "CoinGecko"}
+          </span>
         </div>
       </div>
 
@@ -390,8 +427,14 @@ export default function BinaryFeedCard({
       <div className="absolute bottom-44 right-3 z-20 flex flex-col items-center gap-5 sm:right-5">
         {/* Asset avatar */}
         <div className="relative">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-primary ring-2 ring-black/40 transition-transform active:scale-90">
-            <CryptoLogo asset={round.asset} size={28} />
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-primary ring-2 ring-black/40 transition-transform active:scale-90 overflow-hidden">
+            {isCoreAsset ? (
+              <CryptoLogo asset={asset.symbol as "BTC" | "ETH" | "SOL"} size={28} />
+            ) : asset.logoUrl ? (
+              <img src={asset.logoUrl} alt={asset.symbol} className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-xs font-black text-white">{asset.symbol.slice(0, 3)}</span>
+            )}
           </div>
           <div className="absolute -bottom-1 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full bg-primary-500 text-white">
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -479,7 +522,7 @@ export default function BinaryFeedCard({
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-semibold uppercase text-white/40">Pool</span>
-            <span className="text-sm font-bold text-white">{formatLamports(round.totalPool)} SOL</span>
+            <span className="text-sm font-bold text-white">{formatLamports(market.totalPool)} SOL</span>
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); onTrade(); }}
@@ -496,24 +539,24 @@ export default function BinaryFeedCard({
         <div className="mb-4 flex items-center justify-between text-xs">
           <span>
             <span className="font-bold text-green-400">UP</span>
-            <span className="ml-1 text-white/50">{formatLamports(round.upPool)}</span>
+            <span className="ml-1 text-white/50">{formatLamports(market.upPool)}</span>
             <span className="ml-1 font-bold text-green-400">{upPayout > 0 ? `${upPayout.toFixed(2)}x` : ""}</span>
           </span>
           <span>
             <span className="font-bold text-red-400">{downPayout > 0 ? `${downPayout.toFixed(2)}x` : ""}</span>
-            <span className="ml-1 text-white/50">{formatLamports(round.downPool)}</span>
+            <span className="ml-1 text-white/50">{formatLamports(market.downPool)}</span>
             <span className="ml-1 font-bold text-red-400">DOWN</span>
           </span>
         </div>
 
-        {round.phase === "complete" ? (
+        {market.phase === "complete" ? (
           <div className="rounded-2xl bg-white/5 p-5 text-center backdrop-blur-sm">
-            <p className={`text-3xl font-black ${round.outcome === "up" ? "text-green-400" : "text-red-400"}`}>
-              {round.outcome === "up" ? "↑ UP WINS" : "↓ DOWN WINS"}
+            <p className={`text-3xl font-black ${market.outcome === "up" ? "text-green-400" : market.outcome === "down" ? "text-red-400" : "text-yellow-400"}`}>
+              {market.outcome === "up" ? "↑ UP WINS" : market.outcome === "down" ? "↓ DOWN WINS" : "REFUND"}
             </p>
             <p className="mt-1 text-xs text-white/40">Next round starting...</p>
           </div>
-        ) : round.phase === "locked" || round.phase === "resolving" ? (
+        ) : market.phase === "locked" || market.phase === "resolving" ? (
           <div className="rounded-2xl bg-yellow-500/5 border border-yellow-500/20 p-5 text-center backdrop-blur-sm">
             <svg className="mx-auto h-6 w-6 text-yellow-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -576,11 +619,11 @@ export default function BinaryFeedCard({
         )}
 
         {/* Recent bets ticker */}
-        {round.bets.length > 0 && (
+        {market.bets.length > 0 && (
           <div className="mt-3 flex items-center gap-2 overflow-hidden">
             <span className="shrink-0 text-[9px] font-bold uppercase text-white/30">Live</span>
             <div className="flex gap-2 overflow-x-auto">
-              {round.bets.slice(-5).reverse().map((bet) => (
+              {market.bets.slice(-5).reverse().map((bet) => (
                 <span
                   key={bet.id}
                   className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold backdrop-blur-sm ${

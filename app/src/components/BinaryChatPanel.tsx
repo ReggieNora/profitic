@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { BinaryRound, CryptoAsset } from "@/types";
+import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { ChatMessage } from "@/types/chat";
 import { CryptoLogo } from "./CryptoLogos";
 
@@ -22,41 +22,41 @@ const DEMO_WALLETS = DEMO_NAMES.map(() => {
   return w;
 });
 
-function randomDemoMessage(asset: CryptoAsset, side?: "up" | "down"): string {
+function randomDemoMessage(symbol: string, side?: "up" | "down"): string {
   const bullish = [
-    `${asset} to the moon!`,
-    `Easy UP, ${asset} pumping rn`,
+    `${symbol} to the moon!`,
+    `Easy UP, ${symbol} pumping rn`,
     `Aping UP hard on this one`,
-    `${asset} looking bullish af`,
+    `${symbol} looking bullish af`,
     `Diamond hands UP`,
-    `${asset} breakout incoming`,
+    `${symbol} breakout incoming`,
     `UP gang where you at?`,
-    `This is the dip, ${asset} going higher`,
+    `This is the dip, ${symbol} going higher`,
     `Bears are ngmi, UP all day`,
-    `Loading more UP on ${asset}`,
+    `Loading more UP on ${symbol}`,
   ];
   const bearish = [
-    `${asset} going down, easy money`,
+    `${symbol} going down, easy money`,
     `DOWN on this, charts look weak`,
-    `${asset} overextended, shorting this`,
+    `${symbol} overextended, shorting this`,
     `Sell the pump, DOWN`,
-    `Bearish divergence on ${asset}`,
+    `Bearish divergence on ${symbol}`,
     `DOWN gang eating good today`,
-    `${asset} rejection incoming`,
+    `${symbol} rejection incoming`,
     `This is the top, going DOWN`,
-    `Fading this pump on ${asset}`,
+    `Fading this pump on ${symbol}`,
     `DOWN before the lock!`,
   ];
   const neutral = [
     `gm everyone`,
     `What's the play here?`,
-    `${asset} looking interesting...`,
+    `${symbol} looking interesting...`,
     `Anyone else watching the chart?`,
     `LFG!`,
     `Bets are open, let's go`,
     `Good luck degens`,
     `Who's in on this round?`,
-    `${asset} vibes`,
+    `${symbol} vibes`,
     `This round is going to be spicy`,
   ];
 
@@ -69,7 +69,7 @@ function randomDemoMessage(asset: CryptoAsset, side?: "up" | "down"): string {
   return neutral[Math.floor(Math.random() * neutral.length)];
 }
 
-function generateDemoMessage(asset: CryptoAsset, roomId: string): ChatMessage {
+function generateDemoMessage(symbol: string, roomId: string): ChatMessage {
   const idx = Math.floor(Math.random() * DEMO_NAMES.length);
   const side = Math.random() < 0.6 ? (Math.random() < 0.55 ? "up" : "down") as "up" | "down" : undefined;
   return {
@@ -77,7 +77,7 @@ function generateDemoMessage(asset: CryptoAsset, roomId: string): ChatMessage {
     roomId,
     wallet: DEMO_WALLETS[idx].slice(0, 4) + "..." + DEMO_WALLETS[idx].slice(-4),
     displayName: DEMO_NAMES[idx],
-    body: randomDemoMessage(asset, side),
+    body: randomDemoMessage(symbol, side),
     timestamp: Date.now(),
     side,
   };
@@ -86,18 +86,20 @@ function generateDemoMessage(asset: CryptoAsset, roomId: string): ChatMessage {
 // ── Component ──
 
 interface BinaryChatPanelProps {
-  round: BinaryRound;
+  market: BinaryMarket;
   onClose: () => void;
 }
 
-export default function BinaryChatPanel({ round, onClose }: BinaryChatPanelProps) {
+export default function BinaryChatPanel({ market, onClose }: BinaryChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isVisible, setIsVisible] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const roomId = `${round.asset}-5m-${round.roundNumber}`;
+  const { asset } = market;
+  const isCoreAsset = asset.type === "core" && (asset.symbol === "BTC" || asset.symbol === "ETH" || asset.symbol === "SOL");
+  const roomId = `${asset.symbol}-${market.interval}-r${market.roundNumber}`;
 
   // Slide in on mount
   useEffect(() => {
@@ -109,21 +111,21 @@ export default function BinaryChatPanel({ round, onClose }: BinaryChatPanelProps
     const seed: ChatMessage[] = [];
     const now = Date.now();
     for (let i = 0; i < 12; i++) {
-      const msg = generateDemoMessage(round.asset, roomId);
+      const msg = generateDemoMessage(asset.symbol, roomId);
       msg.timestamp = now - (12 - i) * 4000 + Math.random() * 2000;
       seed.push(msg);
     }
     setMessages(seed);
-  }, [round.asset, roomId]);
+  }, [asset.symbol, roomId]);
 
   // Auto-generate new demo messages
   useEffect(() => {
     const interval = setInterval(() => {
-      const msg = generateDemoMessage(round.asset, roomId);
+      const msg = generateDemoMessage(asset.symbol, roomId);
       setMessages((prev) => [...prev.slice(-80), msg]);
     }, 2500 + Math.random() * 3000);
     return () => clearInterval(interval);
-  }, [round.asset, roomId]);
+  }, [asset.symbol, roomId]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -176,13 +178,24 @@ export default function BinaryChatPanel({ round, onClose }: BinaryChatPanelProps
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
             <div className="flex items-center gap-3">
-              <CryptoLogo asset={round.asset} size={28} />
+              {isCoreAsset ? (
+                <CryptoLogo asset={asset.symbol as "BTC" | "ETH" | "SOL"} size={28} />
+              ) : asset.logoUrl ? (
+                <img src={asset.logoUrl} alt={asset.symbol} className="h-7 w-7 rounded-full" />
+              ) : (
+                <div
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-black text-white"
+                  style={{ backgroundColor: asset.color }}
+                >
+                  {asset.symbol.slice(0, 2)}
+                </div>
+              )}
               <div>
                 <h3 className="text-sm font-bold text-white">
-                  {round.asset} Chat
+                  {asset.symbol} Chat
                 </h3>
                 <p className="text-[10px] text-white/40">
-                  Round #{round.roundNumber} &middot; {messages.length} messages
+                  Round #{market.roundNumber} &middot; {messages.length} messages
                 </p>
               </div>
             </div>

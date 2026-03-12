@@ -2,29 +2,25 @@
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { CryptoAsset } from "@/types";
-import { useBinaryRounds } from "@/hooks/useBinaryRounds";
+import { useBinaryMarkets, BinaryMarket } from "@/hooks/useBinaryMarkets";
 import BinaryFeedCard from "@/components/BinaryFeedCard";
 import BinaryDetailModal from "@/components/BinaryDetailModal";
 import BinaryChatPanel from "@/components/BinaryChatPanel";
 
-// Feed order: BTC 5m → ETH 5m → SOL 5m
-const FEED_ORDER: CryptoAsset[] = ["BTC", "ETH", "SOL"];
-
 export default function HomePage() {
   const { connected } = useWallet();
-  const { rounds, placeBet, livePrices } = useBinaryRounds();
+  const { markets, livePrices, placeBet, loading } = useBinaryMarkets();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [expandedAsset, setExpandedAsset] = useState<CryptoAsset | null>(null);
-  const [chatAsset, setChatAsset] = useState<CryptoAsset | null>(null);
+  const [expandedMarket, setExpandedMarket] = useState<BinaryMarket | null>(null);
+  const [chatMarket, setChatMarket] = useState<BinaryMarket | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
-  const handleBet = (asset: CryptoAsset, side: "up" | "down", amount: number) => {
+  const handleBet = (marketId: string, side: "up" | "down", amount: number) => {
     if (!connected) {
       alert("Connect your wallet to place bets.");
       return;
     }
-    placeBet(asset, side, amount);
+    placeBet(marketId, side, amount);
   };
 
   // Track which card is in view
@@ -34,8 +30,8 @@ export default function HomePage() {
     const scrollTop = container.scrollTop;
     const cardHeight = container.clientHeight;
     const index = Math.round(scrollTop / cardHeight);
-    setCurrentIndex(Math.min(index, FEED_ORDER.length - 1));
-  }, []);
+    setCurrentIndex(Math.min(index, Math.max(0, markets.length - 1)));
+  }, [markets.length]);
 
   useEffect(() => {
     const container = feedRef.current;
@@ -44,8 +40,7 @@ export default function HomePage() {
     return () => container.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
-  // Check if all rounds loaded
-  const allLoaded = FEED_ORDER.every((a) => rounds[a]);
+  const allLoaded = !loading && markets.length > 0;
 
   return (
     <div className="relative -mt-14 h-screen w-full overflow-hidden bg-black">
@@ -65,34 +60,30 @@ export default function HomePage() {
           ref={feedRef}
           className="feed-scroll h-full snap-y snap-mandatory overflow-y-scroll"
         >
-          {FEED_ORDER.map((asset, i) => {
-            const round = rounds[asset];
-            if (!round) return null;
-            return (
-              <div
-                key={`${asset}-${round.roundNumber}`}
-                className="h-full w-full snap-start snap-always"
-              >
-                <BinaryFeedCard
-                  round={round}
-                  livePrice={livePrices[asset]}
-                  onBet={(side, amount) => handleBet(asset, side, amount)}
-                  onTrade={() => setExpandedAsset(asset)}
-                  onChat={() => setChatAsset(asset)}
-                  isActive={i === currentIndex}
-                />
-              </div>
-            );
-          })}
+          {markets.map((market, i) => (
+            <div
+              key={market.id}
+              className="h-full w-full snap-start snap-always"
+            >
+              <BinaryFeedCard
+                market={market}
+                livePrice={livePrices[market.asset.symbol] || 0}
+                onBet={(side, amount) => handleBet(market.id, side, amount)}
+                onTrade={() => setExpandedMarket(market)}
+                onChat={() => setChatMarket(market)}
+                isActive={i === currentIndex}
+              />
+            </div>
+          ))}
         </div>
       )}
 
       {/* Dot indicators */}
       {allLoaded && (
         <div className="absolute right-4 top-1/2 z-20 -translate-y-1/2 flex flex-col gap-2">
-          {FEED_ORDER.map((asset, i) => (
+          {markets.map((market, i) => (
             <button
-              key={asset}
+              key={market.id}
               onClick={() => {
                 feedRef.current?.scrollTo({
                   top: i * (feedRef.current?.clientHeight || 0),
@@ -104,7 +95,7 @@ export default function HomePage() {
                   ? "bg-white scale-125"
                   : "bg-white/30 hover:bg-white/50"
               }`}
-              title={asset}
+              title={`${market.asset.symbol} ${market.intervalLabel}`}
             />
           ))}
         </div>
@@ -120,7 +111,7 @@ export default function HomePage() {
       )}
 
       {/* Desktop nav arrows */}
-      {allLoaded && FEED_ORDER.length > 1 && (
+      {allLoaded && markets.length > 1 && (
         <div className="absolute bottom-8 right-4 z-20 hidden flex-col gap-2 md:flex">
           <button
             onClick={() => {
@@ -139,13 +130,13 @@ export default function HomePage() {
           </button>
           <button
             onClick={() => {
-              if (!feedRef.current || currentIndex >= FEED_ORDER.length - 1) return;
+              if (!feedRef.current || currentIndex >= markets.length - 1) return;
               feedRef.current.scrollTo({
                 top: (currentIndex + 1) * feedRef.current.clientHeight,
                 behavior: "smooth",
               });
             }}
-            disabled={currentIndex >= FEED_ORDER.length - 1}
+            disabled={currentIndex >= markets.length - 1}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/20 disabled:opacity-30"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -156,20 +147,20 @@ export default function HomePage() {
       )}
 
       {/* Trade detail modal */}
-      {expandedAsset && rounds[expandedAsset] && (
+      {expandedMarket && (
         <BinaryDetailModal
-          round={rounds[expandedAsset]}
-          livePrice={livePrices[expandedAsset]}
-          onBet={(side, amount) => handleBet(expandedAsset, side, amount)}
-          onClose={() => setExpandedAsset(null)}
+          market={expandedMarket}
+          livePrice={livePrices[expandedMarket.asset.symbol] || 0}
+          onBet={(side, amount) => handleBet(expandedMarket.id, side, amount)}
+          onClose={() => setExpandedMarket(null)}
         />
       )}
 
       {/* Chat panel */}
-      {chatAsset && rounds[chatAsset] && (
+      {chatMarket && (
         <BinaryChatPanel
-          round={rounds[chatAsset]}
-          onClose={() => setChatAsset(null)}
+          market={chatMarket}
+          onClose={() => setChatMarket(null)}
         />
       )}
     </div>

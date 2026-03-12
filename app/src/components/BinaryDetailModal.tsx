@@ -5,12 +5,12 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from "recharts";
-import { BinaryRound, CryptoAsset, CRYPTO_ASSETS } from "@/types";
-import { PricePoint } from "./BinaryRoundCard";
+import { BinaryMarket } from "@/hooks/useBinaryMarkets";
+import { PricePoint } from "./BinaryFeedCard";
 import { CryptoLogo } from "./CryptoLogos";
 
 interface BinaryDetailModalProps {
-  round: BinaryRound;
+  market: BinaryMarket;
   livePrice: number;
   onBet: (side: "up" | "down", amount: number) => void;
   onClose: () => void;
@@ -25,15 +25,14 @@ function formatLamports(l: number): string {
   return sol.toFixed(3);
 }
 
-// Jitter for realistic chart
-const JITTER_BPS: Record<CryptoAsset, number> = { BTC: 3, ETH: 5, SOL: 8 };
-function jitteredPrice(base: number, asset: CryptoAsset): number {
-  const bps = JITTER_BPS[asset];
+const JITTER_MAP: Record<string, number> = { BTC: 3, ETH: 5, SOL: 8 };
+function jitteredPrice(base: number, symbol: string): number {
+  const bps = JITTER_MAP[symbol] ?? 12;
   return base * (1 + (Math.random() - 0.5) * 2 * (bps / 10000));
 }
 
 export default function BinaryDetailModal({
-  round,
+  market,
   livePrice,
   onBet,
   onClose,
@@ -45,27 +44,35 @@ export default function BinaryDetailModal({
   const lastApiPrice = useRef(0);
   const driftRef = useRef(0);
 
-  const assetMeta = CRYPTO_ASSETS.find((a) => a.value === round.asset)!;
-  const currentPrice = livePrice > 0 ? livePrice : round.startPrice;
+  const { asset } = market;
+  const isCoreAsset = asset.type === "core" && (asset.symbol === "BTC" || asset.symbol === "ETH" || asset.symbol === "SOL");
+  const currentPrice = livePrice > 0 ? livePrice : market.entryPrice;
   const displayPrice = priceHistory.length > 0 ? priceHistory[priceHistory.length - 1].price : currentPrice;
-  const isAboveStart = displayPrice >= round.startPrice;
+  const isAboveStart = displayPrice >= market.entryPrice;
   const priceChangePct =
-    round.startPrice > 0
-      ? ((displayPrice - round.startPrice) / round.startPrice) * 100
+    market.entryPrice > 0
+      ? ((displayPrice - market.entryPrice) / market.entryPrice) * 100
       : 0;
 
-  const upSol = round.upPool / 1_000_000_000;
-  const downSol = round.downPool / 1_000_000_000;
+  const upSol = market.upPool / 1_000_000_000;
+  const downSol = market.downPool / 1_000_000_000;
   const totalSol = upSol + downSol;
   const upPayout = downSol > 0 ? (totalSol * 0.98) / upSol : 0;
   const downPayout = upSol > 0 ? (totalSol * 0.98) / downSol : 0;
   const upPct = totalSol > 0 ? (upSol / totalSol) * 100 : 50;
 
+  const formatUsd = (v: number) => {
+    if (v >= 10000) return `$${(v / 1000).toFixed(1)}k`;
+    if (v >= 1) return `$${v.toFixed(2)}`;
+    if (v >= 0.01) return `$${v.toFixed(4)}`;
+    return `$${v.toFixed(8)}`;
+  };
+
   // Countdown
   useEffect(() => {
     const tick = () => {
       const now = Math.floor(Date.now() / 1000);
-      const remaining = Math.max(0, round.endTime - now);
+      const remaining = Math.max(0, market.endTime - now);
       const m = Math.floor(remaining / 60);
       const s = remaining % 60;
       setCountdown(`${m}:${s.toString().padStart(2, "0")}`);
@@ -73,14 +80,14 @@ export default function BinaryDetailModal({
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [round.endTime]);
+  }, [market.endTime]);
 
   // Reset on round change
   useEffect(() => {
     setPriceHistory([]);
     lastApiPrice.current = 0;
     driftRef.current = 0;
-  }, [round.id]);
+  }, [market.id]);
 
   // Accumulate chart data with jitter
   useEffect(() => {
@@ -91,7 +98,7 @@ export default function BinaryDetailModal({
     }
     const addPoint = () => {
       const base = driftRef.current || currentPrice;
-      const jittered = jitteredPrice(base, round.asset);
+      const jittered = jitteredPrice(base, asset.symbol);
       driftRef.current = jittered;
       const now = new Date();
       const time = `${now.getMinutes()}:${now.getSeconds().toString().padStart(2, "0")}`;
@@ -100,11 +107,11 @@ export default function BinaryDetailModal({
     addPoint();
     const interval = setInterval(addPoint, 2000);
     return () => clearInterval(interval);
-  }, [currentPrice, round.asset, round.id]);
+  }, [currentPrice, asset.symbol, market.id]);
 
   // Y domain
   const prices = priceHistory.map((p) => p.price);
-  prices.push(round.startPrice);
+  prices.push(market.entryPrice);
   const minP = Math.min(...prices);
   const maxP = Math.max(...prices);
   const range = maxP - minP;
@@ -112,13 +119,13 @@ export default function BinaryDetailModal({
 
   const handleBet = () => {
     const amt = parseFloat(betAmount) || 0;
-    if (amt <= 0 || round.phase !== "betting") return;
+    if (amt <= 0 || market.phase !== "betting") return;
     onBet(selectedSide, amt);
     setBetAmount("");
   };
 
-  const elapsed = Math.floor(Date.now() / 1000) - round.startTime;
-  const progressPct = Math.min(100, (elapsed / round.duration) * 100);
+  const elapsed = Math.floor(Date.now() / 1000) - market.startTime;
+  const progressPct = Math.min(100, (elapsed / market.interval) * 100);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -143,21 +150,37 @@ export default function BinaryDetailModal({
         {/* Header */}
         <div className="border-b border-surface-50/30 px-6 py-4">
           <div className="flex items-center gap-3">
-            <CryptoLogo asset={round.asset} size={40} />
+            {isCoreAsset ? (
+              <CryptoLogo asset={asset.symbol as "BTC" | "ETH" | "SOL"} size={40} />
+            ) : asset.logoUrl ? (
+              <img src={asset.logoUrl} alt={asset.symbol} className="h-10 w-10 rounded-full" />
+            ) : (
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-black text-white"
+                style={{ backgroundColor: asset.color }}
+              >
+                {asset.symbol.slice(0, 2)}
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-white">{assetMeta.label}</h2>
+                <h2 className="text-lg font-bold text-white">{asset.name}</h2>
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${
-                  round.phase === "betting" ? "bg-green-500/15 text-green-400" :
-                  round.phase === "locked" ? "bg-yellow-500/15 text-yellow-400" :
-                  round.phase === "complete" ? "bg-gray-500/15 text-gray-400" :
+                  market.phase === "betting" ? "bg-green-500/15 text-green-400" :
+                  market.phase === "locked" ? "bg-yellow-500/15 text-yellow-400" :
+                  market.phase === "complete" ? "bg-gray-500/15 text-gray-400" :
                   "bg-blue-500/15 text-blue-400"
                 }`}>
-                  {round.phase === "betting" ? "OPEN" : round.phase.toUpperCase()}
+                  {market.phase === "betting" ? "OPEN" : market.phase.toUpperCase()}
                 </span>
+                {!isCoreAsset && (
+                  <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-[9px] font-bold text-purple-400">
+                    PUMP.FUN
+                  </span>
+                )}
               </div>
               <p className="text-xs text-gray-500">
-                Round #{round.roundNumber} &middot; 5-minute binary &middot; Pyth Oracle
+                Round #{market.roundNumber} &middot; {market.intervalLabel} &middot; {isCoreAsset ? "Pyth Oracle" : "CoinGecko"}
               </p>
             </div>
           </div>
@@ -169,7 +192,7 @@ export default function BinaryDetailModal({
             <div>
               <p className="text-[10px] font-semibold uppercase text-gray-500 mb-1">Current Price</p>
               <span className="text-3xl font-black tabular-nums text-white">
-                ${displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatUsd(displayPrice)}
               </span>
               <div className="flex items-center gap-2 mt-1">
                 <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[9px] font-bold text-green-400">
@@ -206,11 +229,11 @@ export default function BinaryDetailModal({
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={priceHistory} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                   <defs>
-                    <linearGradient id={`modal-grad-${round.id}-up`} x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id={`modal-grad-${market.id}-up`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
                       <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id={`modal-grad-${round.id}-down`} x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id={`modal-grad-${market.id}-down`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#ef4444" stopOpacity={0.3} />
                       <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
                     </linearGradient>
@@ -222,11 +245,7 @@ export default function BinaryDetailModal({
                     tick={{ fontSize: 10, fill: "#6b7280" }}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(v: number) => {
-                      if (v >= 10000) return `$${(v / 1000).toFixed(1)}k`;
-                      if (v >= 100) return `$${v.toFixed(0)}`;
-                      return `$${v.toFixed(2)}`;
-                    }}
+                    tickFormatter={(v: number) => formatUsd(v)}
                     width={65}
                   />
                   <Tooltip
@@ -238,22 +257,22 @@ export default function BinaryDetailModal({
                       color: "#fff",
                       padding: "8px 12px",
                     }}
-                    formatter={(v: number | string) => [`$${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, "Price"]}
+                    formatter={(v: number | string) => [formatUsd(Number(v)), "Price"]}
                     labelStyle={{ color: "#9ca3af" }}
                   />
                   <ReferenceLine
-                    y={round.startPrice}
+                    y={market.entryPrice}
                     stroke="#6b7280"
                     strokeDasharray="6 4"
                     strokeWidth={1.5}
-                    label={{ value: `Start $${round.startPrice.toLocaleString()}`, fill: "#6b7280", fontSize: 10, position: "left" }}
+                    label={{ value: `Start ${formatUsd(market.entryPrice)}`, fill: "#6b7280", fontSize: 10, position: "left" }}
                   />
                   <Area
                     type="monotone"
                     dataKey="price"
                     stroke={isAboveStart ? "#10b981" : "#ef4444"}
                     strokeWidth={2.5}
-                    fill={isAboveStart ? `url(#modal-grad-${round.id}-up)` : `url(#modal-grad-${round.id}-down)`}
+                    fill={isAboveStart ? `url(#modal-grad-${market.id}-up)` : `url(#modal-grad-${market.id}-down)`}
                     dot={false}
                     isAnimationActive={false}
                   />
@@ -263,8 +282,8 @@ export default function BinaryDetailModal({
           </div>
 
           <div className="flex items-center justify-between text-[10px] text-gray-600 mt-1 mb-3">
-            <span>Start: ${round.startPrice.toLocaleString()}</span>
-            <span>Oracle: Pyth Network (Solana)</span>
+            <span>Start: {formatUsd(market.entryPrice)}</span>
+            <span>Oracle: {isCoreAsset ? "Pyth Network (Solana)" : "CoinGecko"}</span>
           </div>
         </div>
 
@@ -275,7 +294,7 @@ export default function BinaryDetailModal({
             <p className="text-[10px] font-semibold uppercase text-gray-500 mb-3">Pool Breakdown</p>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-bold text-white">Total Pool</span>
-              <span className="text-lg font-black text-white">{formatLamports(round.totalPool)} SOL</span>
+              <span className="text-lg font-black text-white">{formatLamports(market.totalPool)} SOL</span>
             </div>
             {/* Pool bar */}
             <div className="h-3 w-full overflow-hidden rounded-full bg-red-500/30 mb-2">
@@ -284,12 +303,12 @@ export default function BinaryDetailModal({
             <div className="flex items-center justify-between text-xs">
               <div>
                 <span className="font-bold text-green-400">UP</span>
-                <span className="ml-1.5 text-gray-400">{formatLamports(round.upPool)} SOL</span>
+                <span className="ml-1.5 text-gray-400">{formatLamports(market.upPool)} SOL</span>
                 <span className="ml-1.5 font-bold text-green-400">{upPayout > 0 ? `${upPayout.toFixed(2)}x` : "—"}</span>
               </div>
               <div>
                 <span className="font-bold text-red-400">{downPayout > 0 ? `${downPayout.toFixed(2)}x` : "—"}</span>
-                <span className="ml-1.5 text-gray-400">{formatLamports(round.downPool)} SOL</span>
+                <span className="ml-1.5 text-gray-400">{formatLamports(market.downPool)} SOL</span>
                 <span className="ml-1.5 font-bold text-red-400">DOWN</span>
               </div>
             </div>
@@ -317,20 +336,20 @@ export default function BinaryDetailModal({
 
           {/* Betting panel */}
           <div className="rounded-xl bg-surface-300 p-4">
-            {round.phase === "complete" ? (
+            {market.phase === "complete" ? (
               <div className="flex flex-col items-center justify-center h-full py-6">
                 <p className="text-xs text-gray-500">Round Complete</p>
-                <p className={`mt-2 text-3xl font-black ${round.outcome === "up" ? "text-green-400" : "text-red-400"}`}>
-                  {round.outcome === "up" ? "↑ UP WINS" : "↓ DOWN WINS"}
+                <p className={`mt-2 text-3xl font-black ${market.outcome === "up" ? "text-green-400" : market.outcome === "down" ? "text-red-400" : "text-yellow-400"}`}>
+                  {market.outcome === "up" ? "↑ UP WINS" : market.outcome === "down" ? "↓ DOWN WINS" : "REFUND"}
                 </p>
-                {round.endPrice && (
+                {market.finalPrice != null && (
                   <p className="mt-2 text-xs text-gray-500">
-                    Close: ${round.endPrice.toLocaleString()} &middot; Open: ${round.startPrice.toLocaleString()}
+                    Close: {formatUsd(market.finalPrice)} &middot; Open: {formatUsd(market.entryPrice)}
                   </p>
                 )}
                 <p className="mt-3 text-[10px] text-gray-600">Next round starting shortly...</p>
               </div>
-            ) : round.phase === "locked" || round.phase === "resolving" ? (
+            ) : market.phase === "locked" || market.phase === "resolving" ? (
               <div className="flex flex-col items-center justify-center h-full py-6">
                 <svg className="h-8 w-8 text-yellow-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -342,7 +361,7 @@ export default function BinaryDetailModal({
               <>
                 <p className="text-[10px] font-semibold uppercase text-gray-500 mb-3">Place Your Bet</p>
 
-                {/* Side selector - Polymarket style */}
+                {/* Side selector */}
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   <button
                     onClick={() => setSelectedSide("up")}
@@ -408,7 +427,7 @@ export default function BinaryDetailModal({
                 </button>
 
                 <p className="mt-2 text-center text-[9px] text-gray-600">
-                  2% platform fee &middot; Resolved by Pyth Oracle
+                  2% platform fee &middot; Resolved by {isCoreAsset ? "Pyth Oracle" : "CoinGecko"}
                 </p>
               </>
             )}
@@ -416,11 +435,11 @@ export default function BinaryDetailModal({
         </div>
 
         {/* Activity feed */}
-        {round.bets.length > 0 && (
+        {market.bets.length > 0 && (
           <div className="border-t border-surface-50/30 px-6 py-4">
             <p className="mb-3 text-[10px] font-semibold uppercase text-gray-500">Live Activity</p>
             <div className="max-h-40 overflow-y-auto space-y-1.5">
-              {round.bets
+              {market.bets
                 .slice(-15)
                 .reverse()
                 .map((bet) => (
