@@ -214,6 +214,12 @@ export default function HomePage() {
           assetName={historyMarket.asset.name}
           assetType={historyMarket.asset.type}
           interval={historyMarket.interval}
+          availableIntervals={historyMarket.asset.intervals}
+          activeInterval={selectedIntervals[historyMarket.asset.symbol] ?? DEFAULT_INTERVAL}
+          onIntervalChange={(iv) => {
+            handleIntervalChange(historyMarket.asset.symbol, iv);
+            setHistoryMarket(null);
+          }}
           onClose={() => setHistoryMarket(null)}
         />
       )}

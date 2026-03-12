@@ -58,7 +58,6 @@ export default function BinaryFeedCard({
   activeInterval,
   onIntervalChange,
 }: BinaryFeedCardProps) {
-  const [showIntervalPicker, setShowIntervalPicker] = useState(false);
   const [betAmount, setBetAmount] = useState("");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [countdown, setCountdown] = useState("");
@@ -190,7 +189,6 @@ export default function BinaryFeedCard({
   };
 
   const handleDoubleTap = useCallback(() => {
-    setShowIntervalPicker(false);
     const now = Date.now();
     if (now - lastTapRef.current < 300) {
       if (!liked) setLiked(true);
@@ -431,20 +429,9 @@ export default function BinaryFeedCard({
           }`}>
             {market.phase === "betting" ? "OPEN" : market.phase.toUpperCase()}
           </span>
-          <button
-            onClick={(e) => { e.stopPropagation(); onRoundHistory?.(); }}
-            className="flex items-center gap-1 rounded-full bg-white/5 px-2.5 py-0.5 text-xs text-white/50 transition-all hover:bg-white/10 hover:text-white/70 active:scale-95"
-          >
-            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          <span className="text-xs text-white/40">
             Round #{market.roundNumber} &middot; {intervalLabel}
-            {(completedRounds ?? 0) > 0 && (
-              <span className="ml-0.5 rounded-full bg-primary-500/30 px-1.5 py-px text-[9px] font-bold text-primary-300">
-                {completedRounds}
-              </span>
-            )}
-          </button>
+          </span>
           {!isCoreAsset && (
             <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-[9px] font-bold text-purple-400 backdrop-blur-sm">
               PUMP.FUN
@@ -522,50 +509,23 @@ export default function BinaryFeedCard({
           </div>
         </div>
 
-        {/* Interval Switcher (clock button) — core assets only */}
-        {availableIntervals && availableIntervals.length > 1 && onIntervalChange && (
-          <div className="relative">
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowIntervalPicker((p) => !p); }}
-              className="flex flex-col items-center gap-1 transition-transform active:scale-90"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
-                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <span className="text-[10px] font-bold text-white">
-                {INTERVAL_LABELS[activeInterval ?? market.interval] ?? `${(activeInterval ?? market.interval) / 60}m`}
+        {/* Round History (clock button) */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onRoundHistory?.(); }}
+          className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+        >
+          <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
+            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {(completedRounds ?? 0) > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary-500 px-1 text-[9px] font-bold text-white">
+                {completedRounds}
               </span>
-            </button>
-
-            {/* Interval picker popout */}
-            {showIntervalPicker && (
-              <div className="absolute right-12 top-0 z-30 flex items-center gap-1 rounded-full bg-surface-300/90 px-1.5 py-1 shadow-xl backdrop-blur-md border border-white/10 animate-fade-up">
-                {availableIntervals.map((iv) => {
-                  const isSelected = iv === (activeInterval ?? market.interval);
-                  return (
-                    <button
-                      key={iv}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onIntervalChange(iv);
-                        setShowIntervalPicker(false);
-                      }}
-                      className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all ${
-                        isSelected
-                          ? "bg-primary-500 text-white shadow-lg shadow-primary-500/30"
-                          : "text-white/60 hover:bg-white/10 hover:text-white"
-                      }`}
-                    >
-                      {INTERVAL_LABELS[iv] ?? `${iv / 60}m`}
-                    </button>
-                  );
-                })}
-              </div>
             )}
           </div>
-        )}
+          <span className="text-[10px] font-bold text-white">History</span>
+        </button>
 
         {/* Heart/Like */}
         <button

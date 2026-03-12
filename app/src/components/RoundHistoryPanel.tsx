@@ -21,6 +21,9 @@ interface RoundHistoryPanelProps {
   assetName: string;
   assetType: "core" | "pumpfun";
   interval: number;
+  availableIntervals?: number[];
+  activeInterval?: number;
+  onIntervalChange?: (interval: number) => void;
   onClose: () => void;
 }
 
@@ -57,6 +60,9 @@ export default function RoundHistoryPanel({
   assetName,
   assetType,
   interval,
+  availableIntervals,
+  activeInterval,
+  onIntervalChange,
   onClose,
 }: RoundHistoryPanelProps) {
   const [selectedRound, setSelectedRound] = useState<CompletedRound | null>(null);
@@ -165,6 +171,29 @@ export default function RoundHistoryPanel({
           </svg>
         </button>
       </div>
+
+      {/* Interval switcher */}
+      {availableIntervals && availableIntervals.length > 1 && onIntervalChange && (
+        <div className="flex items-center gap-1.5 border-b border-white/5 px-5 py-2.5">
+          <span className="mr-1 text-[10px] font-bold uppercase text-white/30">Interval</span>
+          {availableIntervals.map((iv) => {
+            const isSelected = iv === (activeInterval ?? interval);
+            return (
+              <button
+                key={iv}
+                onClick={() => onIntervalChange(iv)}
+                className={`rounded-full px-3 py-1 text-[11px] font-bold transition-all ${
+                  isSelected
+                    ? "bg-primary-500 text-white shadow-lg shadow-primary-500/30"
+                    : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {INTERVAL_LABELS[iv] ?? `${iv / 60}m`}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="flex items-center gap-4 border-b border-white/5 px-5 py-3">
