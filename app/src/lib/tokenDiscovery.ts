@@ -268,25 +268,6 @@ export async function fetchDailyChart(
       }
     }
   } catch {
-    // try direct next
-  }
-
-  // Try CoinGecko directly as second attempt
-  try {
-    const res = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=1`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-
-    if (res.ok) {
-      const data = await res.json();
-      const result = parseChartResponse(data);
-      if (result.length > 0) {
-        chartCache[cacheKey] = { data: result, ts: Date.now() };
-        return result;
-      }
-    }
-  } catch {
     // fallback below
   }
 

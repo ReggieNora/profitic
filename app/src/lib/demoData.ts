@@ -18,14 +18,14 @@ async function fetchLivePrices(): Promise<Record<string, number>> {
   try {
     const ids = Object.values(COINGECKO_IDS).join(",");
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
-      { signal: AbortSignal.timeout(5000) }
+      `/api/prices?ids=${encodeURIComponent(ids)}`,
+      { signal: AbortSignal.timeout(8000) }
     );
-    if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
+    if (!res.ok) throw new Error(`Price proxy ${res.status}`);
     const data = await res.json();
 
     for (const [symbol, cgId] of Object.entries(COINGECKO_IDS)) {
-      const price = data?.[cgId]?.usd;
+      const price = data?.[cgId];
       if (typeof price === "number" && price > 0) {
         livePriceCache[symbol] = price;
       }
