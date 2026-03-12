@@ -11,7 +11,7 @@ import {
   Tooltip,
 } from "recharts";
 import { CompletedRound } from "@/hooks/useBinaryMarkets";
-import { fetchAssetPrice } from "@/lib/tokenDiscovery";
+import { fetchPriceChart } from "@/lib/tokenDiscovery";
 import { CryptoLogo } from "./CryptoLogos";
 
 interface RoundHistoryPanelProps {
@@ -67,7 +67,7 @@ export default function RoundHistoryPanel({
 }: RoundHistoryPanelProps) {
   const [selectedRound, setSelectedRound] = useState<CompletedRound | null>(null);
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
-  const [livePrice, setLivePrice] = useState<number>(0);
+  const [chartLoading, setChartLoading] = useState(false);
 
   const isCoreAsset = assetType === "core" && (assetSymbol === "BTC" || assetSymbol === "ETH" || assetSymbol === "SOL");
   const intervalLabel = INTERVAL_LABELS[interval] ?? `${interval / 60}m`;
@@ -79,12 +79,6 @@ export default function RoundHistoryPanel({
   const downWins = rounds.filter((r) => r.outcome === "down").length;
   const upStreak = (() => {
     let streak = 0;
-    for (let i = sortedRounds.length - 1; i >= 0; i--) {
-      // count from most recent
-      const r = sortedRounds[sortedRounds.length - 1 - i];
-      if (!r) break;
-    }
-    // Calculate current streak from most recent
     for (const r of sortedRounds) {
       if (r.outcome === sortedRounds[0]?.outcome) streak++;
       else break;
@@ -92,46 +86,70 @@ export default function RoundHistoryPanel({
     return { side: sortedRounds[0]?.outcome || "up", count: streak };
   })();
 
-  // Generate simulated chart data for a selected completed round
+  // Fetch real CoinGecko chart data for selected round
   useEffect(() => {
     if (!selectedRound) {
       setChartData([]);
       return;
     }
 
-    const { entryPrice, finalPrice, interval: roundInterval } = selectedRound;
-    const points: ChartPoint[] = [];
-    const numPoints = 30;
-    const priceDiff = finalPrice - entryPrice;
+    let cancelled = false;
+    setChartLoading(true);
 
-    for (let i = 0; i <= numPoints; i++) {
-      const progress = i / numPoints;
-      // Simulate a realistic price path with some randomness
-      const trend = entryPrice + priceDiff * progress;
-      const noise = entryPrice * (Math.random() - 0.5) * 0.002;
-      const price = trend + noise;
-      const seconds = Math.round((roundInterval * i) / numPoints);
-      const m = Math.floor(seconds / 60);
-      const s = seconds % 60;
-      points.push({
-        time: `${m}:${s.toString().padStart(2, "0")}`,
-        price,
-      });
-    }
-    // Ensure last point is exact final price
-    if (points.length > 0) {
-      points[points.length - 1].price = finalPrice;
-    }
-    setChartData(points);
+    const load = async () => {
+      // Add buffer around round window for context
+      const buffer = Math.max(60, selectedRound.interval * 0.2);
+      const from = selectedRound.startTime - buffer;
+      const to = selectedRound.endTime + buffer;
+
+      const prices = await fetchPriceChart(
+        selectedRound.asset.coingeckoId,
+        from,
+        to
+      );
+
+      if (cancelled) return;
+
+      if (prices.length > 0) {
+        // Convert to chart points with readable time labels
+        const startMs = selectedRound.startTime * 1000;
+        const points: ChartPoint[] = prices.map((p) => {
+          const elapsed = Math.max(0, Math.round((p.time - startMs) / 1000));
+          const m = Math.floor(elapsed / 60);
+          const s = elapsed % 60;
+          return {
+            time: `${m}:${s.toString().padStart(2, "0")}`,
+            price: p.price,
+          };
+        });
+        setChartData(points);
+      } else {
+        // Fallback: interpolate between entry and final price
+        const { entryPrice, finalPrice, interval: roundInterval } = selectedRound;
+        const numPoints = 30;
+        const priceDiff = finalPrice - entryPrice;
+        const points: ChartPoint[] = [];
+        for (let i = 0; i <= numPoints; i++) {
+          const progress = i / numPoints;
+          const trend = entryPrice + priceDiff * progress;
+          const noise = entryPrice * (Math.random() - 0.5) * 0.002;
+          const seconds = Math.round((roundInterval * i) / numPoints);
+          const m = Math.floor(seconds / 60);
+          const s = seconds % 60;
+          points.push({
+            time: `${m}:${s.toString().padStart(2, "0")}`,
+            price: trend + noise,
+          });
+        }
+        if (points.length > 0) points[points.length - 1].price = finalPrice;
+        setChartData(points);
+      }
+      setChartLoading(false);
+    };
+
+    load();
+    return () => { cancelled = true; };
   }, [selectedRound]);
-
-  // Fetch current live price for the header
-  useEffect(() => {
-    if (rounds.length > 0) {
-      const latest = sortedRounds[0];
-      if (latest) setLivePrice(latest.finalPrice);
-    }
-  }, [rounds, sortedRounds]);
 
   const chartPrices = chartData.map((p) => p.price);
   const chartEntryPrice = selectedRound?.entryPrice ?? 0;
@@ -223,11 +241,12 @@ export default function RoundHistoryPanel({
       </div>
 
       {/* Selected round chart */}
-      {selectedRound && chartData.length > 1 && (
+      {selectedRound && (chartLoading || chartData.length > 1) && (
         <div className="border-b border-white/5 px-5 py-4">
           <div className="mb-2 flex items-center justify-between">
-            <div>
+            <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-white">Round #{selectedRound.roundNumber}</span>
+              <span className="text-[10px] text-white/30">via CoinGecko</span>
               <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${
                 selectedRound.outcome === "up"
                   ? "bg-green-500/20 text-green-400"
@@ -245,6 +264,14 @@ export default function RoundHistoryPanel({
             </div>
           </div>
           <div className="h-40 w-full">
+            {chartLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-400 border-t-transparent" />
+                  <span className="text-[10px] text-white/30">Loading chart from CoinGecko...</span>
+                </div>
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <defs>
@@ -288,6 +315,7 @@ export default function RoundHistoryPanel({
                 />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-white/40">
             <span>Pool: {formatLamports(selectedRound.totalPool)} SOL</span>
