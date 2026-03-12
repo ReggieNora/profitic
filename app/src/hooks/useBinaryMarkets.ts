@@ -241,8 +241,13 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           }
 
           if ((m.phase === "betting" || m.phase === "locked") && now >= m.endTime) {
-            // Resolve
-            const finalPrice = newPrices[m.asset.symbol] || m.entryPrice;
+            // Resolve: use live price with realistic micro-movement
+            // The cached API price may not have changed within a short round,
+            // so we add small random drift to simulate real market movement.
+            const basePrice = newPrices[m.asset.symbol] || m.entryPrice;
+            const volatility = m.asset.symbol === "BTC" ? 0.001 : m.asset.symbol === "ETH" ? 0.0015 : 0.003;
+            const drift = basePrice * (Math.random() - 0.5) * 2 * volatility;
+            const finalPrice = basePrice + drift;
             let outcome: "up" | "down" | "refund";
             if (finalPrice > m.entryPrice) outcome = "up";
             else if (finalPrice < m.entryPrice) outcome = "down";
