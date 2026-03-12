@@ -20,6 +20,7 @@ interface RoundHistoryPanelProps {
   assetSymbol: string;
   assetName: string;
   assetType: "core" | "pumpfun";
+  coingeckoId: string;
   interval: number;
   availableIntervals?: number[];
   activeInterval?: number;
@@ -59,6 +60,7 @@ export default function RoundHistoryPanel({
   assetSymbol,
   assetName,
   assetType,
+  coingeckoId,
   interval,
   availableIntervals,
   activeInterval,
@@ -67,7 +69,8 @@ export default function RoundHistoryPanel({
 }: RoundHistoryPanelProps) {
   const [selectedRound, setSelectedRound] = useState<CompletedRound | null>(null);
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
-  const [chartLoading, setChartLoading] = useState(false);
+  const [chartLoading, setChartLoading] = useState(true);
+  const [chartLabel, setChartLabel] = useState("24h");
 
   const isCoreAsset = assetType === "core" && (assetSymbol === "BTC" || assetSymbol === "ETH" || assetSymbol === "SOL");
   const intervalLabel = INTERVAL_LABELS[interval] ?? `${interval / 60}m`;
@@ -86,18 +89,44 @@ export default function RoundHistoryPanel({
     return { side: sortedRounds[0]?.outcome || "up", count: streak };
   })();
 
-  // Fetch real CoinGecko chart data for selected round
+  // Fetch default 24h chart on mount
   useEffect(() => {
-    if (!selectedRound) {
-      setChartData([]);
-      return;
-    }
+    let cancelled = false;
+    setChartLoading(true);
+
+    const load = async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const from = now - 86400; // 24 hours ago
+
+      const prices = await fetchPriceChart(coingeckoId, from, now);
+      if (cancelled) return;
+
+      if (prices.length > 0) {
+        const points: ChartPoint[] = prices.map((p) => {
+          const d = new Date(p.time);
+          return {
+            time: `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`,
+            price: p.price,
+          };
+        });
+        setChartData(points);
+      }
+      setChartLoading(false);
+      setChartLabel("24h");
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [coingeckoId]);
+
+  // Fetch round-specific chart when a round is selected
+  useEffect(() => {
+    if (!selectedRound) return; // keep default chart visible
 
     let cancelled = false;
     setChartLoading(true);
 
     const load = async () => {
-      // Add buffer around round window for context
       const buffer = Math.max(60, selectedRound.interval * 0.2);
       const from = selectedRound.startTime - buffer;
       const to = selectedRound.endTime + buffer;
@@ -111,7 +140,6 @@ export default function RoundHistoryPanel({
       if (cancelled) return;
 
       if (prices.length > 0) {
-        // Convert to chart points with readable time labels
         const startMs = selectedRound.startTime * 1000;
         const points: ChartPoint[] = prices.map((p) => {
           const elapsed = Math.max(0, Math.round((p.time - startMs) / 1000));
@@ -145,6 +173,7 @@ export default function RoundHistoryPanel({
         setChartData(points);
       }
       setChartLoading(false);
+      setChartLabel(`Round #${selectedRound.roundNumber}`);
     };
 
     load();
@@ -158,6 +187,7 @@ export default function RoundHistoryPanel({
   const maxP = chartPrices.length > 0 ? Math.max(...chartPrices) : 0;
   const range = maxP - minP;
   const pad = range > 0 ? range * 0.15 : maxP * 0.001 || 1;
+  const chartIsUp = chartData.length >= 2 && chartData[chartData.length - 1].price >= chartData[0].price;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-xl animate-fade-up">
@@ -240,14 +270,14 @@ export default function RoundHistoryPanel({
         </div>
       </div>
 
-      {/* Selected round chart */}
-      {selectedRound && (chartLoading || chartData.length > 1) && (
-        <div className="border-b border-white/5 px-5 py-4">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-white">Round #{selectedRound.roundNumber}</span>
-              <span className="text-[10px] text-white/30">via CoinGecko</span>
-              <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+      {/* Price chart — always visible */}
+      <div className="border-b border-white/5 px-5 py-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-white">{chartLabel}</span>
+            <span className="text-[10px] text-white/30">via CoinGecko</span>
+            {selectedRound && (
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                 selectedRound.outcome === "up"
                   ? "bg-green-500/20 text-green-400"
                   : selectedRound.outcome === "down"
@@ -256,22 +286,29 @@ export default function RoundHistoryPanel({
               }`}>
                 {selectedRound.outcome === "up" ? "↑ UP" : selectedRound.outcome === "down" ? "↓ DOWN" : "REFUND"}
               </span>
-            </div>
-            <div className="text-right">
+            )}
+          </div>
+          <div className="text-right">
+            {selectedRound ? (
               <span className="text-xs text-white/40">
                 {formatUsd(selectedRound.entryPrice)} → {formatUsd(selectedRound.finalPrice)}
               </span>
-            </div>
+            ) : chartData.length >= 2 ? (
+              <span className="text-xs text-white/40">
+                {formatUsd(chartData[0].price)} → {formatUsd(chartData[chartData.length - 1].price)}
+              </span>
+            ) : null}
           </div>
-          <div className="h-40 w-full">
-            {chartLoading ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-400 border-t-transparent" />
-                  <span className="text-[10px] text-white/30">Loading chart from CoinGecko...</span>
-                </div>
+        </div>
+        <div className="h-44 w-full">
+          {chartLoading ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="flex flex-col items-center gap-2">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-400 border-t-transparent" />
+                <span className="text-[10px] text-white/30">Loading chart from CoinGecko...</span>
               </div>
-            ) : (
+            </div>
+          ) : chartData.length >= 2 ? (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <defs>
@@ -296,27 +333,34 @@ export default function RoundHistoryPanel({
                   }}
                   formatter={(value: number) => [formatUsd(value), "Price"]}
                 />
-                <ReferenceLine
-                  y={selectedRound.entryPrice}
-                  stroke="#facc15"
-                  strokeDasharray="6 4"
-                  strokeWidth={1.5}
-                  strokeOpacity={0.6}
-                />
+                {selectedRound && (
+                  <ReferenceLine
+                    y={selectedRound.entryPrice}
+                    stroke="#facc15"
+                    strokeDasharray="6 4"
+                    strokeWidth={1.5}
+                    strokeOpacity={0.6}
+                  />
+                )}
                 <Area
                   type="monotone"
                   dataKey="price"
-                  stroke={selectedRound.outcome === "up" ? "#10b981" : "#ef4444"}
+                  stroke={selectedRound ? (selectedRound.outcome === "up" ? "#10b981" : "#ef4444") : (chartIsUp ? "#10b981" : "#ef4444")}
                   strokeWidth={2}
-                  fill={selectedRound.outcome === "up" ? "url(#histGradUp)" : "url(#histGradDown)"}
+                  fill={selectedRound ? (selectedRound.outcome === "up" ? "url(#histGradUp)" : "url(#histGradDown)") : (chartIsUp ? "url(#histGradUp)" : "url(#histGradDown)")}
                   dot={false}
                   isAnimationActive={true}
                   animationDuration={600}
                 />
               </AreaChart>
             </ResponsiveContainer>
-            )}
-          </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-white/20 text-xs">
+              No chart data available
+            </div>
+          )}
+        </div>
+        {selectedRound && (
           <div className="mt-2 flex items-center justify-between text-[11px] text-white/40">
             <span>Pool: {formatLamports(selectedRound.totalPool)} SOL</span>
             <span>
@@ -324,8 +368,8 @@ export default function RoundHistoryPanel({
             </span>
             <span>{selectedRound.totalBets} bets</span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Round list */}
       <div className="flex-1 overflow-y-auto px-5 py-3">

@@ -213,6 +213,7 @@ export default function HomePage() {
           assetSymbol={historyMarket.asset.symbol}
           assetName={historyMarket.asset.name}
           assetType={historyMarket.asset.type}
+          coingeckoId={historyMarket.asset.coingeckoId}
           interval={historyMarket.interval}
           availableIntervals={historyMarket.asset.intervals}
           activeInterval={selectedIntervals[historyMarket.asset.symbol] ?? DEFAULT_INTERVAL}
