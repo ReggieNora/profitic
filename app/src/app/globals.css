@@ -287,3 +287,39 @@ body {
 .animate-float-bet {
   animation: float-bet 2.2s ease-out forwards;
 }
+
+/* ── NYSE dot-matrix ticker ── */
+
+.ticker-wrap {
+  background: #000;
+  /* Subtle scan-line effect */
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.15) 2px,
+    rgba(0, 0, 0, 0.15) 4px
+  );
+}
+
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-track {
+  animation: ticker-scroll 40s linear infinite;
+  will-change: transform;
+}
+
+.ticker-wrap:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+/* Dot-matrix font feel via subtle text-shadow */
+.ticker-item {
+  text-shadow:
+    0 0 4px rgba(245, 158, 11, 0.6),
+    0 0 8px rgba(245, 158, 11, 0.2);
+  letter-spacing: 0.05em;
+}

@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LeaderboardCategory,
   LeaderboardTimeframe,
   LeaderboardEntry,
-  LiveNotification,
   getLeaderboard,
   generateLiveNotification,
 } from "@/lib/leaderboardData";
@@ -88,49 +87,50 @@ export default function LeaderboardPage() {
   const [category, setCategory] = useState<LeaderboardCategory>("profit");
   const [timeframe, setTimeframe] = useState<LeaderboardTimeframe>("allTime");
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [notifications, setNotifications] = useState<LiveNotification[]>([]);
+  const [tickerItems, setTickerItems] = useState<string[]>([]);
+  const tickerRef = useRef<HTMLDivElement>(null);
 
   // Load entries when category or timeframe changes
   useEffect(() => {
     setEntries(getLeaderboard(category, timeframe));
   }, [category, timeframe]);
 
-  // Live notifications every 8s
+  // Seed ticker with initial items, then add new ones periodically
   useEffect(() => {
-    const interval = setInterval(() => {
-      const notif = generateLiveNotification();
-      setNotifications((prev) => [notif, ...prev].slice(0, 3));
-    }, 8000);
-    // First one after 3s
-    const timeout = setTimeout(() => {
-      setNotifications([generateLiveNotification()]);
-    }, 3000);
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, []);
+    // Start with 6 items so the ticker is full
+    const initial: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      initial.push(generateLiveNotification().message);
+    }
+    setTickerItems(initial);
 
-  const dismissNotification = useCallback((id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    const interval = setInterval(() => {
+      setTickerItems((prev) => {
+        const next = [...prev, generateLiveNotification().message];
+        // keep last 12 to avoid unbounded growth
+        return next.slice(-12);
+      });
+    }, 6000);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="relative min-h-[calc(100vh-3.5rem)] w-full bg-transparent pb-20">
-      {/* Live notifications – float top-right */}
-      <div className="fixed right-4 top-16 z-40 flex flex-col gap-2 max-w-xs">
-        {notifications.map((notif) => (
-          <div
-            key={notif.id}
-            className="animate-fade-up rounded-xl border border-white/10 bg-surface-300/95 backdrop-blur-xl px-4 py-3 text-xs text-white/80 shadow-lg shadow-primary-500/10 cursor-pointer transition-all hover:border-primary-500/30"
-            onClick={() => dismissNotification(notif.id)}
-          >
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0 text-base leading-none">{"\u26A1"}</span>
-              <span>{notif.message}</span>
-            </div>
-          </div>
-        ))}
+      {/* NYSE-style dot matrix ticker */}
+      <div className="ticker-wrap relative overflow-hidden border-b border-amber-500/20 bg-black">
+        <div className="ticker-track flex whitespace-nowrap">
+          {/* Duplicate items for seamless looping */}
+          {[...tickerItems, ...tickerItems].map((msg, i) => (
+            <span
+              key={`${i}-${msg.slice(0, 12)}`}
+              className="ticker-item inline-flex items-center gap-3 px-6 py-2 font-mono text-xs tracking-wide text-amber-400"
+            >
+              <span className="text-amber-500/60">{"\u25C6"}</span>
+              <span>{msg.toUpperCase()}</span>
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Header */}
