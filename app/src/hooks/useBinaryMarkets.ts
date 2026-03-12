@@ -41,6 +41,24 @@ export interface MarketBet {
   timestamp: number;
 }
 
+export interface CompletedRound {
+  id: string;
+  asset: TradingAsset;
+  interval: number;
+  intervalLabel: string;
+  roundNumber: number;
+  entryPrice: number;
+  finalPrice: number;
+  outcome: "up" | "down" | "refund";
+  upPool: number;
+  downPool: number;
+  totalPool: number;
+  feeCollected: number;
+  startTime: number;
+  endTime: number;
+  totalBets: number;
+}
+
 // ── Constants ──
 
 const LOCK_BUFFER_SECONDS = 10; // lock bets 10s before expiry
@@ -107,6 +125,7 @@ export interface UseBinaryMarketsReturn {
   assets: TradingAsset[];
   livePrices: Record<string, number>;
   placeBet: (marketId: string, side: "up" | "down", amount: number) => void;
+  roundHistory: Record<string, CompletedRound[]>; // keyed by "SYMBOL-interval"
   loading: boolean;
 }
 
@@ -115,6 +134,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const [assets, setAssets] = useState<TradingAsset[]>(CORE_ASSETS);
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [roundHistory, setRoundHistory] = useState<Record<string, CompletedRound[]>>({});
   const initialized = useRef(false);
   const roundCounters = useRef<Record<string, number>>({});
   const livePricesRef = useRef(livePrices);
@@ -223,6 +243,30 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             };
             changed = true;
 
+            // Save to round history
+            const historyKey = `${m.asset.symbol}-${m.interval}`;
+            const completedRound: CompletedRound = {
+              id: m.id,
+              asset: m.asset,
+              interval: m.interval,
+              intervalLabel: m.intervalLabel,
+              roundNumber: m.roundNumber,
+              entryPrice: m.entryPrice,
+              finalPrice,
+              outcome,
+              upPool: m.upPool,
+              downPool: m.downPool,
+              totalPool: m.totalPool,
+              feeCollected: fee,
+              startTime: m.startTime,
+              endTime: m.endTime,
+              totalBets: m.bets.length,
+            };
+            setRoundHistory((prev) => {
+              const existing = prev[historyKey] || [];
+              return { ...prev, [historyKey]: [...existing, completedRound].slice(-50) };
+            });
+
             // Schedule new round
             const key = `${m.asset.symbol}-${m.interval}`;
             const rn = (roundCounters.current[key] || 1) + 1;
@@ -309,5 +353,5 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     []
   );
 
-  return { markets, assets, livePrices, placeBet, loading };
+  return { markets, assets, livePrices, placeBet, roundHistory, loading };
 }

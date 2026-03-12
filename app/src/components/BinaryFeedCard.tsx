@@ -14,7 +14,9 @@ interface BinaryFeedCardProps {
   onBet: (side: "up" | "down", amount: number) => void;
   onTrade: () => void;
   onChat: () => void;
+  onRoundHistory?: () => void;
   isActive: boolean;
+  completedRounds?: number;
   availableIntervals?: number[];
   activeInterval?: number;
   onIntervalChange?: (interval: number) => void;
@@ -49,7 +51,9 @@ export default function BinaryFeedCard({
   onBet,
   onTrade,
   onChat,
+  onRoundHistory,
   isActive,
+  completedRounds,
   availableIntervals,
   activeInterval,
   onIntervalChange,
@@ -427,9 +431,20 @@ export default function BinaryFeedCard({
           }`}>
             {market.phase === "betting" ? "OPEN" : market.phase.toUpperCase()}
           </span>
-          <span className="text-xs text-white/40">
+          <button
+            onClick={(e) => { e.stopPropagation(); onRoundHistory?.(); }}
+            className="flex items-center gap-1 rounded-full bg-white/5 px-2.5 py-0.5 text-xs text-white/50 transition-all hover:bg-white/10 hover:text-white/70 active:scale-95"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
             Round #{market.roundNumber} &middot; {intervalLabel}
-          </span>
+            {(completedRounds ?? 0) > 0 && (
+              <span className="ml-0.5 rounded-full bg-primary-500/30 px-1.5 py-px text-[9px] font-bold text-primary-300">
+                {completedRounds}
+              </span>
+            )}
+          </button>
           {!isCoreAsset && (
             <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-[9px] font-bold text-purple-400 backdrop-blur-sm">
               PUMP.FUN

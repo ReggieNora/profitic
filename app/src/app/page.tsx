@@ -6,15 +6,17 @@ import { useBinaryMarkets, BinaryMarket } from "@/hooks/useBinaryMarkets";
 import BinaryFeedCard from "@/components/BinaryFeedCard";
 import BinaryDetailModal from "@/components/BinaryDetailModal";
 import BinaryChatPanel from "@/components/BinaryChatPanel";
+import RoundHistoryPanel from "@/components/RoundHistoryPanel";
 
 const DEFAULT_INTERVAL = 300; // 5 min default
 
 export default function HomePage() {
   const { connected } = useWallet();
-  const { markets, livePrices, placeBet, loading } = useBinaryMarkets();
+  const { markets, livePrices, placeBet, roundHistory, loading } = useBinaryMarkets();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expandedMarket, setExpandedMarket] = useState<BinaryMarket | null>(null);
   const [chatMarket, setChatMarket] = useState<BinaryMarket | null>(null);
+  const [historyMarket, setHistoryMarket] = useState<BinaryMarket | null>(null);
   // Track selected interval per asset symbol
   const [selectedIntervals, setSelectedIntervals] = useState<Record<string, number>>({});
   const feedRef = useRef<HTMLDivElement>(null);
@@ -105,7 +107,9 @@ export default function HomePage() {
                 onBet={(side, amount) => handleBet(market.id, side, amount)}
                 onTrade={() => setExpandedMarket(market)}
                 onChat={() => setChatMarket(market)}
+                onRoundHistory={() => setHistoryMarket(market)}
                 isActive={i === currentIndex}
+                completedRounds={(roundHistory[`${market.asset.symbol}-${market.interval}`] || []).length}
                 availableIntervals={market.asset.intervals}
                 activeInterval={selectedIntervals[market.asset.symbol] ?? DEFAULT_INTERVAL}
                 onIntervalChange={(interval) => handleIntervalChange(market.asset.symbol, interval)}
@@ -198,6 +202,19 @@ export default function HomePage() {
         <BinaryChatPanel
           market={chatMarket}
           onClose={() => setChatMarket(null)}
+        />
+      )}
+
+      {/* Round history panel */}
+      {historyMarket && (
+        <RoundHistoryPanel
+          rounds={roundHistory[`${historyMarket.asset.symbol}-${historyMarket.interval}`] || []}
+          currentRound={historyMarket.roundNumber}
+          assetSymbol={historyMarket.asset.symbol}
+          assetName={historyMarket.asset.name}
+          assetType={historyMarket.asset.type}
+          interval={historyMarket.interval}
+          onClose={() => setHistoryMarket(null)}
         />
       )}
     </div>
