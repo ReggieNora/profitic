@@ -42,7 +42,7 @@ function formatTime(date: Date): string {
 }
 
 function formatPrice(p: number): string {
-  if (p >= 10000) return `$${(p / 1000).toFixed(1)}k`;
+  if (p >= 10000) return `$${p.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   if (p >= 100) return `$${p.toFixed(0)}`;
   if (p >= 1) return `$${p.toFixed(2)}`;
   return `$${p.toFixed(4)}`;
