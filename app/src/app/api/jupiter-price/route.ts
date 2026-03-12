@@ -6,12 +6,15 @@ import { NextRequest, NextResponse } from "next/server";
  *
  * GET /api/jupiter-price?ids=SOL,BONK,So11111111111111111111111111111111
  *
- * Accepts token symbols or mint addresses (comma-separated).
- * Jupiter Price API: https://price.jup.ag/v6/price
+ * Returns stale cache on any failure to prevent 502 floods.
  */
 
 let cache: { data: Record<string, number>; ts: number } | null = null;
-const CACHE_TTL = 15_000; // 15 seconds — Jupiter is generous with rate limits
+const CACHE_TTL = 30_000; // 30 seconds — avoid hammering Jupiter
+
+// Track consecutive failures to implement backoff
+let lastFailure = 0;
+const FAILURE_BACKOFF = 60_000; // Wait 60s after a failure before retrying Jupiter
 
 export async function GET(req: NextRequest) {
   const ids = req.nextUrl.searchParams.get("ids") || "";
@@ -19,28 +22,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing ids" }, { status: 400 });
   }
 
-  // Return cache if fresh and all requested ids are present
-  const idList = ids.split(",").map((s) => s.trim()).filter(Boolean);
+  // Return cache if fresh (don't require ALL ids to be present — partial is fine)
   if (cache && Date.now() - cache.ts < CACHE_TTL) {
-    const allCached = idList.every((id) => id in cache!.data);
-    if (allCached) {
-      return NextResponse.json(cache.data);
-    }
+    return NextResponse.json(cache.data);
+  }
+
+  // If Jupiter recently failed, return stale cache or empty rather than retrying
+  if (lastFailure && Date.now() - lastFailure < FAILURE_BACKOFF) {
+    if (cache) return NextResponse.json(cache.data);
+    return NextResponse.json({});
   }
 
   try {
     const url = `https://price.jup.ag/v6/price?ids=${encodeURIComponent(ids)}&vsToken=USDC`;
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(5000),
       headers: { Accept: "application/json" },
     });
 
     if (!res.ok) {
+      lastFailure = Date.now();
       if (cache) return NextResponse.json(cache.data);
-      return NextResponse.json(
-        { error: `Jupiter returned ${res.status}` },
-        { status: res.status }
-      );
+      return NextResponse.json({});
     }
 
     const data = await res.json();
@@ -61,10 +64,12 @@ export async function GET(req: NextRequest) {
       data: { ...(cache?.data || {}), ...prices },
       ts: Date.now(),
     };
+    lastFailure = 0; // Reset on success
 
     return NextResponse.json(prices);
   } catch {
+    lastFailure = Date.now();
     if (cache) return NextResponse.json(cache.data);
-    return NextResponse.json({ error: "Jupiter fetch failed" }, { status: 502 });
+    return NextResponse.json({});
   }
 }

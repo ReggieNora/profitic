@@ -110,7 +110,7 @@ export function useCryptoPrice(asset: CryptoAsset | string): CryptoPriceResult {
 
   useEffect(() => {
     fetchPrice();
-    const interval = setInterval(fetchPrice, 15_000); // Poll every 15 seconds
+    const interval = setInterval(fetchPrice, 30_000); // Poll every 30 seconds
     return () => clearInterval(interval);
   }, [fetchPrice]);
 

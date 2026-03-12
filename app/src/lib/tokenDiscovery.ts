@@ -207,6 +207,10 @@ export function formatInterval(seconds: number): string {
 const assetPriceCache: Record<string, { price: number; ts: number }> = {};
 const PRICE_CACHE_TTL = 30_000; // match server cache TTL
 
+// Track failed Jupiter fetches to avoid retrying every tick
+let jupiterFailedAt = 0;
+const JUPITER_FAIL_BACKOFF = 60_000; // 60s backoff on Jupiter failures
+
 /**
  * Fetch historical price chart via server-side proxy (/api/chart) to avoid
  * browser CORS issues and CoinGecko rate-limiting.
@@ -434,6 +438,9 @@ export async function fetchAssetPrices(
     }
   }
 
+  // Skip Jupiter if we're in backoff period
+  const skipJupiter = toFetchJup.length > 0 && jupiterFailedAt && Date.now() - jupiterFailedAt < JUPITER_FAIL_BACKOFF;
+
   // Fetch both in parallel
   const [cgResult, jupResult] = await Promise.all([
     toFetchCG.length > 0
@@ -443,12 +450,19 @@ export async function fetchAssetPrices(
           .then((r) => (r.ok ? r.json() : {}))
           .catch(() => ({}))
       : Promise.resolve({}),
-    toFetchJup.length > 0
+    toFetchJup.length > 0 && !skipJupiter
       ? fetch(`/api/jupiter-price?ids=${encodeURIComponent(toFetchJup.join(","))}`, {
           signal: AbortSignal.timeout(8000),
         })
-          .then((r) => (r.ok ? r.json() : {}))
-          .catch(() => ({}))
+          .then((r) => {
+            if (r.ok) {
+              jupiterFailedAt = 0;
+              return r.json();
+            }
+            jupiterFailedAt = Date.now();
+            return {};
+          })
+          .catch(() => { jupiterFailedAt = Date.now(); return {}; })
       : Promise.resolve({}),
   ]);
 
