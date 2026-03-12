@@ -208,7 +208,7 @@ export default function HomePage() {
       {/* Round history panel */}
       {historyMarket && (
         <RoundHistoryPanel
-          rounds={roundHistory[`${historyMarket.asset.symbol}-${historyMarket.interval}`] || []}
+          roundHistory={roundHistory}
           currentRound={historyMarket.roundNumber}
           assetSymbol={historyMarket.asset.symbol}
           assetName={historyMarket.asset.name}
@@ -216,11 +216,6 @@ export default function HomePage() {
           coingeckoId={historyMarket.asset.coingeckoId}
           interval={historyMarket.interval}
           availableIntervals={historyMarket.asset.intervals}
-          activeInterval={selectedIntervals[historyMarket.asset.symbol] ?? DEFAULT_INTERVAL}
-          onIntervalChange={(iv) => {
-            handleIntervalChange(historyMarket.asset.symbol, iv);
-            setHistoryMarket(null);
-          }}
           onClose={() => setHistoryMarket(null)}
         />
       )}

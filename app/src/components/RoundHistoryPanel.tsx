@@ -16,7 +16,7 @@ import { fetchDailyChart, fetchPriceChart } from "@/lib/tokenDiscovery";
 import { CryptoLogo } from "./CryptoLogos";
 
 interface RoundHistoryPanelProps {
-  rounds: CompletedRound[];
+  roundHistory: Record<string, CompletedRound[]>;
   currentRound: number;
   assetSymbol: string;
   assetName: string;
@@ -24,8 +24,6 @@ interface RoundHistoryPanelProps {
   coingeckoId: string;
   interval: number;
   availableIntervals?: number[];
-  activeInterval?: number;
-  onIntervalChange?: (interval: number) => void;
   onClose: () => void;
 }
 
@@ -56,7 +54,7 @@ function formatLamports(l: number): string {
 }
 
 export default function RoundHistoryPanel({
-  rounds,
+  roundHistory,
   currentRound,
   assetSymbol,
   assetName,
@@ -64,17 +62,19 @@ export default function RoundHistoryPanel({
   coingeckoId,
   interval,
   availableIntervals,
-  activeInterval,
-  onIntervalChange,
   onClose,
 }: RoundHistoryPanelProps) {
+  const [activeInterval, setActiveInterval] = useState(interval);
   const [selectedRound, setSelectedRound] = useState<CompletedRound | null>(null);
+
+  // Get rounds for the currently selected interval
+  const rounds = roundHistory[`${assetSymbol}-${activeInterval}`] || [];
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [chartLoading, setChartLoading] = useState(true);
   const [chartLabel, setChartLabel] = useState("24h");
 
   const isCoreAsset = assetType === "core" && (assetSymbol === "BTC" || assetSymbol === "ETH" || assetSymbol === "SOL");
-  const intervalLabel = INTERVAL_LABELS[interval] ?? `${interval / 60}m`;
+  const intervalLabel = INTERVAL_LABELS[activeInterval] ?? `${activeInterval / 60}m`;
   const sortedRounds = [...rounds].sort((a, b) => b.roundNumber - a.roundNumber);
 
   // Stats
@@ -223,15 +223,15 @@ export default function RoundHistoryPanel({
       </div>
 
       {/* Interval switcher */}
-      {availableIntervals && availableIntervals.length > 1 && onIntervalChange && (
+      {availableIntervals && availableIntervals.length > 1 && (
         <div className="flex items-center gap-1.5 border-b border-white/5 px-5 py-2.5">
           <span className="mr-1 text-[10px] font-bold uppercase text-white/30">Interval</span>
           {availableIntervals.map((iv) => {
-            const isSelected = iv === (activeInterval ?? interval);
+            const isSelected = iv === activeInterval;
             return (
               <button
                 key={iv}
-                onClick={() => onIntervalChange(iv)}
+                onClick={() => { setActiveInterval(iv); setSelectedRound(null); }}
                 className={`rounded-full px-3 py-1 text-[11px] font-bold transition-all ${
                   isSelected
                     ? "bg-primary-500 text-white shadow-lg shadow-primary-500/30"
