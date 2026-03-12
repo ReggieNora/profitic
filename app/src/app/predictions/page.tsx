@@ -95,24 +95,13 @@ export default function LeaderboardPage() {
     setEntries(getLeaderboard(category, timeframe));
   }, [category, timeframe]);
 
-  // Seed ticker with initial items, then add new ones periodically
+  // Seed ticker once – no subsequent state updates so CSS animation stays seamless
   useEffect(() => {
-    // Start with 6 items so the ticker is full
     const initial: string[] = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       initial.push(generateLiveNotification().message);
     }
     setTickerItems(initial);
-
-    const interval = setInterval(() => {
-      setTickerItems((prev) => {
-        const next = [...prev, generateLiveNotification().message];
-        // keep last 12 to avoid unbounded growth
-        return next.slice(-12);
-      });
-    }, 6000);
-
-    return () => clearInterval(interval);
   }, []);
 
   return (
