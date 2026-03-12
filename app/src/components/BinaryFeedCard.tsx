@@ -132,13 +132,32 @@ export default function BinaryFeedCard({
     driftRef.current = 0;
   }, [market.id]);
 
-  // Accumulate chart data
+  // Seed initial chart data so the chart renders immediately
   useEffect(() => {
     if (currentPrice <= 0) return;
-    if (currentPrice !== lastApiPrice.current) {
+
+    // Only seed once per market round
+    if (priceHistory.length === 0) {
+      const seed: PricePoint[] = [];
+      const now = Date.now();
+      let p = currentPrice;
+      for (let i = 20; i >= 1; i--) {
+        p = jitteredPrice(p, asset.symbol);
+        const d = new Date(now - i * 2000);
+        seed.push({
+          time: `${d.getMinutes()}:${d.getSeconds().toString().padStart(2, "0")}`,
+          price: p,
+          ts: now - i * 2000,
+        });
+      }
+      setPriceHistory(seed);
+      lastApiPrice.current = currentPrice;
+      driftRef.current = p;
+    } else if (currentPrice !== lastApiPrice.current) {
       lastApiPrice.current = currentPrice;
       driftRef.current = currentPrice;
     }
+
     const addPoint = () => {
       const base = driftRef.current || currentPrice;
       const jittered = jitteredPrice(base, asset.symbol);
@@ -147,7 +166,6 @@ export default function BinaryFeedCard({
       const time = `${now.getMinutes()}:${now.getSeconds().toString().padStart(2, "0")}`;
       setPriceHistory((prev) => [...prev, { time, price: jittered, ts: Date.now() }].slice(-150));
     };
-    addPoint();
     const interval = setInterval(addPoint, 2000);
     return () => clearInterval(interval);
   }, [currentPrice, asset.symbol, market.id]);
