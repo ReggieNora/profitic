@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   Tooltip,
+  CartesianGrid,
 } from "recharts";
 import { CompletedRound } from "@/hooks/useBinaryMarkets";
 import { fetchDailyChart, fetchPriceChart } from "@/lib/tokenDiscovery";
@@ -187,7 +188,11 @@ export default function RoundHistoryPanel({
   const chartIsUp = chartData.length >= 2 && chartData[chartData.length - 1].price >= chartData[0].price;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-xl animate-fade-up">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl shadow-black/50 animate-fade-up"
+      onClick={(e) => e.stopPropagation()}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
         <div className="flex items-center gap-3">
@@ -307,7 +312,7 @@ export default function RoundHistoryPanel({
             </div>
           ) : chartData.length >= 2 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                 <defs>
                   <linearGradient id="histGradUp" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
@@ -318,7 +323,16 @@ export default function RoundHistoryPanel({
                     <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <YAxis domain={[minP - pad, maxP + pad]} hide />
+                <CartesianGrid horizontal vertical={false} stroke="rgba(255,255,255,0.06)" />
+                <YAxis
+                  domain={[minP - pad, maxP + pad]}
+                  tickFormatter={(v: number) => formatUsd(v)}
+                  tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={65}
+                  tickCount={5}
+                />
                 <XAxis dataKey="time" hide />
                 <Tooltip
                   contentStyle={{
@@ -457,6 +471,7 @@ export default function RoundHistoryPanel({
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
