@@ -11,8 +11,6 @@ import {
   getFarmLeaderboard,
   getRewardGrowthData,
   getRewardHistory,
-  getTierForStake,
-  calculateDailyReward,
   getApyDisplay,
   formatProfit,
   generateStakeEvent,
@@ -22,6 +20,8 @@ import {
   type RewardHistoryEntry,
   type StakeEvent,
 } from "@/lib/yieldFarmData";
+import { useYieldFarm, getTierForAmount, estimatePendingRewards } from "@/hooks/useYieldFarm";
+import { LAMPORTS_PER_SOL } from "@/lib/constants";
 
 // ── Tab type ──
 type FarmTab = "stake" | "rewards" | "pool" | "leaderboard";
@@ -37,14 +37,27 @@ export default function YieldFarmPage() {
   const { publicKey } = useWallet();
   const [activeTab, setActiveTab] = useState<FarmTab>("stake");
 
-  // ── User staking state (simulated local) ──
-  const [userStake, setUserStake] = useState(0);
-  const [pendingRewards, setPendingRewards] = useState(0);
-  const [totalClaimed, setTotalClaimed] = useState(0);
-  const [streakDays] = useState(12);
+  // ── On-chain farm hook ──
+  const {
+    farmConfig,
+    userStake: onChainStake,
+    loading: txLoading,
+    error: txError,
+    stake: onChainStakeFn,
+    unstake: onChainUnstakeFn,
+    claimRewards: onChainClaimFn,
+  } = useYieldFarm();
+
+  // Derive user-facing values from on-chain state
+  const userStake = onChainStake?.stakedAmount ?? 0;
+  const totalClaimed = onChainStake?.totalClaimed ?? 0;
+  const streakDays = onChainStake && onChainStake.streakStartTs > 0
+    ? Math.floor((Date.now() / 1000 - onChainStake.streakStartTs) / 86400)
+    : 0;
+
   const [stakeInput, setStakeInput] = useState("");
 
-  // ── Pool & data ──
+  // ── Pool & data (still demo until indexer is built) ──
   const [poolStats, setPoolStats] = useState<PoolStats | null>(null);
   const [leaderboard, setLeaderboard] = useState<FarmLeaderboardEntry[]>([]);
   const [growthData, setGrowthData] = useState<RewardGrowthPoint[]>([]);
@@ -57,28 +70,43 @@ export default function YieldFarmPage() {
   const [rewardTick, setRewardTick] = useState(0);
   const rewardRef = useRef<HTMLSpanElement>(null);
 
-  // Load data
+  // ── Live-estimated pending rewards (ticks every second) ──
+  const [pendingRewards, setPendingRewards] = useState(0);
+
   useEffect(() => {
-    setPoolStats(getPoolStats());
+    if (!onChainStake || onChainStake.stakedAmount <= 0) {
+      setPendingRewards(0);
+      return;
+    }
+    const tick = () => {
+      const est = estimatePendingRewards(onChainStake);
+      setPendingRewards(Math.floor(est * 10000) / 10000);
+      setRewardTick((t) => t + 1);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [onChainStake]);
+
+  // Override pool stats with on-chain config when available
+  useEffect(() => {
+    if (farmConfig) {
+      setPoolStats((prev) => {
+        const base = prev ?? getPoolStats();
+        return {
+          ...base,
+          totalStaked: farmConfig.totalStaked,
+          totalStakers: farmConfig.totalStakers,
+          totalRewardsDistributed: farmConfig.totalRewardsDistributed,
+        };
+      });
+    } else {
+      setPoolStats(getPoolStats());
+    }
     setLeaderboard(getFarmLeaderboard());
     setGrowthData(getRewardGrowthData(30));
     setRewardHistory(getRewardHistory(publicKey?.toBase58()));
-  }, [publicKey]);
-
-  // Simulate live reward accrual
-  useEffect(() => {
-    if (userStake <= 0) return;
-    const daily = calculateDailyReward(userStake, streakDays);
-    const perSecond = daily / 86400;
-    const interval = setInterval(() => {
-      setPendingRewards((prev) => {
-        const next = prev + perSecond;
-        return Math.floor(next * 10000) / 10000;
-      });
-      setRewardTick((t) => t + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [userStake, streakDays]);
+  }, [publicKey, farmConfig]);
 
   // Live activity events
   useEffect(() => {
@@ -91,40 +119,48 @@ export default function YieldFarmPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Handlers ──
-  const handleStake = useCallback(() => {
+  // ── Handlers (call on-chain, fall back to simulation) ──
+  const handleStake = useCallback(async () => {
     const amount = parseFloat(stakeInput);
     if (!amount || amount <= 0) return;
-    setUserStake((prev) => prev + amount);
-    setStakeInput("");
-    setStakeSuccess(true);
-    // Update pool stats
-    setPoolStats((prev) => prev ? {
-      ...prev,
-      totalStaked: prev.totalStaked + amount,
-      totalStakers: prev.totalStakers + (userStake === 0 ? 1 : 0),
-      liquidityAvailable: prev.liquidityAvailable + amount,
-    } : prev);
-    setTimeout(() => setStakeSuccess(false), 2000);
-  }, [stakeInput, userStake]);
+    const lamports = Math.floor(amount * LAMPORTS_PER_SOL);
+    try {
+      await onChainStakeFn(lamports);
+      setStakeInput("");
+      setStakeSuccess(true);
+      setTimeout(() => setStakeSuccess(false), 2000);
+    } catch (err) {
+      console.error("Stake failed:", err);
+    }
+  }, [stakeInput, onChainStakeFn]);
 
-  const handleUnstake = useCallback(() => {
+  const handleUnstake = useCallback(async () => {
     if (userStake <= 0) return;
-    const amount = parseFloat(stakeInput) || userStake;
-    const actual = Math.min(amount, userStake);
-    setUserStake((prev) => prev - actual);
-    setStakeInput("");
-  }, [stakeInput, userStake]);
+    const inputAmt = parseFloat(stakeInput);
+    const solAmount = inputAmt > 0 ? inputAmt : userStake / LAMPORTS_PER_SOL;
+    const lamports = Math.floor(solAmount * LAMPORTS_PER_SOL);
+    const actual = Math.min(lamports, userStake);
+    try {
+      await onChainUnstakeFn(actual);
+      setStakeInput("");
+    } catch (err) {
+      console.error("Unstake failed:", err);
+    }
+  }, [stakeInput, userStake, onChainUnstakeFn]);
 
-  const handleClaim = useCallback(() => {
+  const handleClaim = useCallback(async () => {
     if (pendingRewards <= 0) return;
-    setTotalClaimed((prev) => prev + pendingRewards);
-    setPendingRewards(0);
-    setClaimSuccess(true);
-    setTimeout(() => setClaimSuccess(false), 2000);
-  }, [pendingRewards]);
+    try {
+      await onChainClaimFn();
+      setClaimSuccess(true);
+      setTimeout(() => setClaimSuccess(false), 2000);
+    } catch (err) {
+      console.error("Claim failed:", err);
+    }
+  }, [pendingRewards, onChainClaimFn]);
 
-  const userTier = getTierForStake(userStake);
+  const tier = getTierForAmount(userStake);
+  const userTier = { label: tier.label, weeklyApy: tier.weeklyBps / 100 };
   const apyDisplay = getApyDisplay(userTier.weeklyApy);
 
   return (
@@ -151,6 +187,17 @@ export default function YieldFarmPage() {
           </div>
         </div>
       </div>
+
+      {/* Transaction status */}
+      {(txLoading || txError) && (
+        <div className={`relative mx-4 mt-2 rounded-xl border px-3 py-2 text-xs sm:mx-6 ${
+          txError
+            ? "border-red-500/30 bg-red-500/10 text-red-400"
+            : "border-primary-500/30 bg-primary-500/10 text-primary-300"
+        }`}>
+          {txLoading ? "Sending transaction..." : txError}
+        </div>
+      )}
 
       {/* Live activity ticker */}
       <div className="relative mx-4 mt-3 overflow-hidden rounded-xl border border-white/5 bg-surface-300/60 sm:mx-6">
@@ -203,9 +250,9 @@ export default function YieldFarmPage() {
       <div className="mx-auto max-w-2xl px-4 sm:px-6">
         {activeTab === "stake" && (
           <StakeSection
-            userStake={userStake}
-            pendingRewards={pendingRewards}
-            totalClaimed={totalClaimed}
+            userStake={userStake / LAMPORTS_PER_SOL}
+            pendingRewards={pendingRewards / LAMPORTS_PER_SOL}
+            totalClaimed={totalClaimed / LAMPORTS_PER_SOL}
             streakDays={streakDays}
             stakeInput={stakeInput}
             setStakeInput={setStakeInput}
@@ -225,8 +272,8 @@ export default function YieldFarmPage() {
         {activeTab === "rewards" && (
           <RewardsSection
             rewardHistory={rewardHistory}
-            pendingRewards={pendingRewards}
-            totalClaimed={totalClaimed}
+            pendingRewards={pendingRewards / LAMPORTS_PER_SOL}
+            totalClaimed={totalClaimed / LAMPORTS_PER_SOL}
             onClaim={handleClaim}
             claimSuccess={claimSuccess}
           />

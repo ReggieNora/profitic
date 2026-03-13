@@ -14,6 +14,12 @@ export const BINARY_MARKET_PROGRAM_ID = new PublicKey(
     "2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj"
 );
 
+// Yield farm program
+export const YIELD_FARM_PROGRAM_ID = new PublicKey(
+  process.env.NEXT_PUBLIC_YIELD_FARM_PROGRAM_ID ||
+    "EyAQAxKyjWbSbf991RftzpXHkcGqgaG2VDLjSUgjE1M6"
+);
+
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
