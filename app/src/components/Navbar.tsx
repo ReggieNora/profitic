@@ -1,12 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { ADMIN_WALLETS } from "@/lib/constants";
+import { useSolBalance } from "@/hooks/useSolBalance";
 
 // Dynamic import with ssr:false prevents hydration mismatch from wallet button
 const WalletMultiButton = dynamic(
@@ -17,8 +18,21 @@ const WalletMultiButton = dynamic(
 export default function Navbar() {
   const pathname = usePathname();
   const { publicKey } = useWallet();
+  const { balance, requestAirdrop } = useSolBalance();
+  const [airdropping, setAirdropping] = useState(false);
   const isAdmin =
     publicKey && ADMIN_WALLETS.includes(publicKey.toBase58());
+
+  const handleAirdrop = async () => {
+    setAirdropping(true);
+    try {
+      await requestAirdrop();
+    } catch {
+      // useSolBalance logs the error
+    } finally {
+      setAirdropping(false);
+    }
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-white/[0.03] backdrop-blur-2xl backdrop-saturate-150">
@@ -64,8 +78,26 @@ export default function Navbar() {
           })}
         </div>
 
-        {/* Wallet */}
-        <div className="flex items-center">
+        {/* Wallet + Balance */}
+        <div className="flex items-center gap-2">
+          {publicKey && balance !== null && (
+            <div className="flex items-center gap-1.5 rounded-xl bg-surface-300/80 px-2 py-1 sm:px-3 sm:py-1.5">
+              <span className="text-[10px] font-bold tabular-nums text-white sm:text-xs">
+                {balance.toFixed(2)}
+              </span>
+              <span className="text-[9px] font-semibold text-gray-500 sm:text-[10px]">SOL</span>
+            </div>
+          )}
+          {publicKey && (
+            <button
+              onClick={handleAirdrop}
+              disabled={airdropping}
+              className="rounded-lg bg-primary-500/20 px-2 py-1 text-[9px] font-bold text-primary-400 transition-all hover:bg-primary-500/30 active:scale-95 disabled:opacity-50 sm:rounded-xl sm:px-3 sm:py-1.5 sm:text-[10px]"
+              title="Get 2 devnet SOL"
+            >
+              {airdropping ? "..." : "Airdrop"}
+            </button>
+          )}
           <WalletMultiButton />
         </div>
       </div>

@@ -4,9 +4,11 @@ skip-lint = false
 
 [programs.localnet]
 profitic = "Prof1t1cPredMarket11111111111111111111111"
+binary_market = "BinMkt11111111111111111111111111111111111111"
 
 [programs.devnet]
 profitic = "Prof1t1cPredMarket11111111111111111111111"
+binary_market = "BinMkt11111111111111111111111111111111111111"
 
 [registry]
 url = "https://api.apr.dev"

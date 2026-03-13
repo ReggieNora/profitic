@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { BN } from "@coral-xyz/anchor";
 import {
   TradingAsset,
   CORE_ASSETS,
@@ -8,6 +11,7 @@ import {
   fetchAssetPrices,
   formatInterval,
 } from "@/lib/tokenDiscovery";
+import { useBinaryProgram, deriveRoundPda, deriveBetPda, deriveConfigPda } from "./useBinaryProgram";
 
 // ── Types ──
 
@@ -124,9 +128,12 @@ export interface UseBinaryMarketsReturn {
   markets: BinaryMarket[];
   assets: TradingAsset[];
   livePrices: Record<string, number>;
-  placeBet: (marketId: string, side: "up" | "down", amount: number) => void;
+  placeBet: (marketId: string, side: "up" | "down", amount: number) => Promise<void>;
+  claimWinnings: (marketId: string, betIndex: number) => Promise<void>;
   roundHistory: Record<string, CompletedRound[]>; // keyed by "SYMBOL-interval"
   loading: boolean;
+  txPending: boolean;
+  txError: string | null;
 }
 
 export function useBinaryMarkets(): UseBinaryMarketsReturn {
@@ -135,10 +142,17 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [roundHistory, setRoundHistory] = useState<Record<string, CompletedRound[]>>({});
+  const [txPending, setTxPending] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
   const initialized = useRef(false);
   const roundCounters = useRef<Record<string, number>>({});
   const livePricesRef = useRef(livePrices);
   livePricesRef.current = livePrices;
+
+  // On-chain program access
+  const { program } = useBinaryProgram();
+  const wallet = useWallet();
+  const { connection } = useConnection();
 
   // Client-only init: create markets with fallback prices, then fetch real data
   useEffect(() => {
@@ -348,36 +362,124 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     return () => clearInterval(interval);
   }, [assets]);
 
+  // ── Place Bet (on-chain if wallet connected, otherwise local simulation) ──
   const placeBet = useCallback(
-    (marketId: string, side: "up" | "down", amount: number) => {
-      setMarkets((prev) => {
-        const idx = prev.findIndex((m) => m.id === marketId);
-        if (idx === -1) return prev;
-        const m = prev[idx];
-        if (m.phase !== "betting") return prev;
+    async (marketId: string, side: "up" | "down", amount: number) => {
+      const market = markets.find((m) => m.id === marketId);
+      if (!market || market.phase !== "betting") return;
 
-        const lamports = solToLamports(amount);
+      const lamports = solToLamports(amount);
+
+      // Optimistic UI update
+      const applyBet = (wallet: string) => {
         const bet: MarketBet = {
-          id: `${m.id}-user-${Date.now()}`,
-          wallet: "You",
+          id: `${marketId}-${wallet}-${Date.now()}`,
+          wallet,
           side,
           amount: lamports,
           timestamp: Math.floor(Date.now() / 1000),
         };
+        setMarkets((prev) => {
+          const idx = prev.findIndex((m) => m.id === marketId);
+          if (idx === -1) return prev;
+          const m = prev[idx];
+          const updated = [...prev];
+          updated[idx] = {
+            ...m,
+            bets: [...m.bets, bet],
+            upPool: m.upPool + (side === "up" ? lamports : 0),
+            downPool: m.downPool + (side === "down" ? lamports : 0),
+            totalPool: m.totalPool + lamports,
+          };
+          return updated;
+        });
+      };
 
-        const updated = [...prev];
-        updated[idx] = {
-          ...m,
-          bets: [...m.bets, bet],
-          upPool: m.upPool + (side === "up" ? lamports : 0),
-          downPool: m.downPool + (side === "down" ? lamports : 0),
-          totalPool: m.totalPool + lamports,
-        };
-        return updated;
-      });
+      // If program is available and wallet connected, submit on-chain
+      if (program && wallet.publicKey) {
+        setTxPending(true);
+        setTxError(null);
+
+        try {
+          const [roundPda] = deriveRoundPda(market.asset.symbol, market.roundNumber);
+
+          // Fetch current round to get totalBets for bet PDA derivation
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
+          const totalBets = (roundAccount.totalBets as number) || 0;
+
+          const [betPda] = deriveBetPda(roundPda, wallet.publicKey, totalBets);
+
+          const sideArg = side === "up" ? { up: {} } : { down: {} };
+
+          const tx = await program.methods
+            .placeBet(sideArg as never, new BN(lamports))
+            .accounts({
+              round: roundPda,
+              bet: betPda,
+              user: wallet.publicKey,
+              systemProgram: SystemProgram.programId,
+            })
+            .rpc();
+
+          console.log("Bet placed on-chain:", tx);
+          applyBet(wallet.publicKey.toBase58().slice(0, 4) + ".." + wallet.publicKey.toBase58().slice(-4));
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("On-chain bet failed:", msg);
+          setTxError(msg);
+        } finally {
+          setTxPending(false);
+        }
+      } else {
+        // Fallback: local simulation (no wallet connected)
+        applyBet("You");
+      }
     },
-    []
+    [markets, program, wallet.publicKey]
   );
 
-  return { markets, assets, livePrices, placeBet, roundHistory, loading };
+  // ── Claim Winnings ──
+  const claimWinnings = useCallback(
+    async (marketId: string, betIndex: number) => {
+      if (!program || !wallet.publicKey) {
+        throw new Error("Wallet not connected");
+      }
+
+      const market = markets.find((m) => m.id === marketId);
+      if (!market || market.phase !== "complete") {
+        throw new Error("Round not complete");
+      }
+
+      setTxPending(true);
+      setTxError(null);
+
+      try {
+        const [roundPda] = deriveRoundPda(market.asset.symbol, market.roundNumber);
+        const [betPda] = deriveBetPda(roundPda, wallet.publicKey, betIndex);
+
+        const tx = await program.methods
+          .claimWinnings()
+          .accounts({
+            round: roundPda,
+            bet: betPda,
+            user: wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+
+        console.log("Winnings claimed:", tx);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("Claim failed:", msg);
+        setTxError(msg);
+        throw err;
+      } finally {
+        setTxPending(false);
+      }
+    },
+    [markets, program, wallet.publicKey]
+  );
+
+  return { markets, assets, livePrices, placeBet, claimWinnings, roundHistory, loading, txPending, txError };
 }

@@ -15,12 +15,12 @@ export default function BinariesPage() {
   const [filter, setFilter] = useState<FilterTab>("all");
   const [assetFilter, setAssetFilter] = useState<string | null>(null);
 
-  const handleBet = (marketId: string, side: "up" | "down", amount: number) => {
+  const handleBet = async (marketId: string, side: "up" | "down", amount: number) => {
     if (!connected) {
       alert("Connect your wallet to place bets.");
       return;
     }
-    placeBet(marketId, side, amount);
+    await placeBet(marketId, side, amount);
   };
 
   // Filter markets

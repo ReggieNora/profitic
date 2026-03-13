@@ -8,6 +8,12 @@ export const PROGRAM_ID = new PublicKey(
     "11111111111111111111111111111111"
 );
 
+// Binary market program — update after `anchor deploy`
+export const BINARY_MARKET_PROGRAM_ID = new PublicKey(
+  process.env.NEXT_PUBLIC_BINARY_MARKET_PROGRAM_ID ||
+    "BinMkt11111111111111111111111111111111111111"
+);
+
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 

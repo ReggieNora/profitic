@@ -12,7 +12,7 @@ const DEFAULT_INTERVAL = 300; // 5 min default
 
 export default function HomePage() {
   const { connected } = useWallet();
-  const { markets, livePrices, placeBet, roundHistory, loading } = useBinaryMarkets();
+  const { markets, livePrices, placeBet, roundHistory, loading, txPending } = useBinaryMarkets();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expandedMarket, setExpandedMarket] = useState<BinaryMarket | null>(null);
   const [chatMarket, setChatMarket] = useState<BinaryMarket | null>(null);
@@ -47,12 +47,12 @@ export default function HomePage() {
     return result;
   }, [markets, assetGroups, selectedIntervals]);
 
-  const handleBet = (marketId: string, side: "up" | "down", amount: number) => {
+  const handleBet = async (marketId: string, side: "up" | "down", amount: number) => {
     if (!connected) {
       alert("Connect your wallet to place bets.");
       return;
     }
-    placeBet(marketId, side, amount);
+    await placeBet(marketId, side, amount);
   };
 
   const handleIntervalChange = useCallback((symbol: string, interval: number) => {
