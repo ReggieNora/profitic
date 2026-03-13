@@ -6,6 +6,7 @@
     "build": "anchor build",
     "test": "anchor test",
     "deploy": "anchor deploy --provider.cluster devnet",
+    "setup:farm": "npx ts-node scripts/devnet-setup-farm.ts",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd app && npm run dev"
   },
