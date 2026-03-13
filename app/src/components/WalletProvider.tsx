@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo } from "react";
 import {
   ConnectionProvider,
   WalletProvider as SolanaWalletProvider,
@@ -18,12 +18,6 @@ export default function WalletProvider({
 }) {
   const endpoint = useMemo(() => SOLANA_RPC_URL, []);
   const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
-
-  // Defer wallet provider mount so the UI shell renders first
-  const [ready, setReady] = useState(false);
-  useEffect(() => { setReady(true); }, []);
-
-  if (!ready) return <>{children}</>;
 
   return (
     <ConnectionProvider endpoint={endpoint}>
