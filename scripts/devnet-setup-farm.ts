@@ -106,12 +106,12 @@ async function main() {
     connection,
     {
       publicKey: wallet.publicKey,
-      signTransaction: async (tx) => {
-        tx.sign([wallet]);
+      signTransaction: async (tx: any) => {
+        tx.sign(wallet);
         return tx;
       },
-      signAllTransactions: async (txs) => {
-        txs.forEach((tx) => tx.sign([wallet]));
+      signAllTransactions: async (txs: any[]) => {
+        txs.forEach((tx: any) => tx.sign(wallet));
         return txs;
       },
     },
