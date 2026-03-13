@@ -107,11 +107,11 @@ async function main() {
     {
       publicKey: wallet.publicKey,
       signTransaction: async (tx) => {
-        tx.sign(wallet);
+        tx.sign([wallet]);
         return tx;
       },
       signAllTransactions: async (txs) => {
-        txs.forEach((tx) => tx.sign(wallet));
+        txs.forEach((tx) => tx.sign([wallet]));
         return txs;
       },
     },
