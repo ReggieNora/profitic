@@ -3,12 +3,12 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-profitic = "Prof1t1cPredMarket11111111111111111111111"
-binary_market = "BinMkt11111111111111111111111111111111111111"
+profitic = "BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz"
+binary_market = "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
 
 [programs.devnet]
-profitic = "Prof1t1cPredMarket11111111111111111111111"
-binary_market = "BinMkt11111111111111111111111111111111111111"
+profitic = "BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz"
+binary_market = "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
 
 [registry]
 url = "https://api.apr.dev"

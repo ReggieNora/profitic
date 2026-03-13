@@ -6,7 +6,7 @@ pub mod instructions;
 
 use instructions::*;
 
-declare_id!("Prof1t1cPredMarket11111111111111111111111");
+declare_id!("BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz");
 
 #[program]
 pub mod profitic {

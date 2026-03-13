@@ -23,7 +23,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("BinMkt11111111111111111111111111111111111111");
+declare_id!("5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr");
 
 pub const ROUND_SEED: &[u8] = b"binary_round";
 pub const BET_SEED: &[u8] = b"binary_bet";
