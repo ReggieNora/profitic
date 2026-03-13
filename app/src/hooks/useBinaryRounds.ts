@@ -20,9 +20,9 @@ const DEMO_WALLETS = [
 
 // Fallback prices in case CoinGecko is slow/down
 const FALLBACK_PRICES: Record<CryptoAsset, number> = {
-  BTC: 69000,
-  ETH: 2400,
-  SOL: 85,
+  BTC: 71000,
+  ETH: 2500,
+  SOL: 130,
 };
 
 const ASSETS: CryptoAsset[] = ["BTC", "ETH", "SOL"];

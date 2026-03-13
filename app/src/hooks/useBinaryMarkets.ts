@@ -71,9 +71,9 @@ const DEMO_WALLETS = [
 const BET_AMOUNTS = [0.1, 0.2, 0.5, 1, 2, 5, 10];
 
 const FALLBACK_PRICES: Record<string, number> = {
-  bitcoin: 69000,
-  ethereum: 2400,
-  solana: 85,
+  bitcoin: 71000,
+  ethereum: 2500,
+  solana: 130,
 };
 
 function solToLamports(sol: number): number {

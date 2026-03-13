@@ -220,9 +220,9 @@ const CHART_CACHE_TTL = 60_000;
 
 /** Approximate fallback prices keyed by coingeckoId */
 const FALLBACK_BASE_PRICES: Record<string, number> = {
-  bitcoin: 69000,
-  ethereum: 2400,
-  solana: 85,
+  bitcoin: 71000,
+  ethereum: 2500,
+  solana: 130,
   bonk: 0.000015,
   dogwifcoin: 1.2,
   popcat: 0.35,
