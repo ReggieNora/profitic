@@ -1,21 +1,23 @@
+[toolchain]
+
 [features]
 seeds = false
 skip-lint = false
 
-[programs.localnet]
-profitic = "BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz"
-binary_market = "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
-
 [programs.devnet]
-profitic = "BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz"
+binary_market = "2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj"
+profitic = "F26VXCqa3qsQrwA9doQrcbykw38D8wqoUWCvVtGjrMKd"
+
+[programs.localnet]
 binary_market = "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
+profitic = "BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
-wallet = "~/.config/solana/id.json"
+cluster = "Devnet"
+wallet = "/root/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

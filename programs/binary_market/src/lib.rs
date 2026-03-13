@@ -23,7 +23,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr");
+declare_id!("2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj");
 
 pub const ROUND_SEED: &[u8] = b"binary_round";
 pub const BET_SEED: &[u8] = b"binary_bet";
@@ -92,23 +92,26 @@ pub mod binary_market {
         amount: u64,
     ) -> Result<()> {
         let clock = Clock::get()?;
-        let round = &mut ctx.accounts.round;
 
-        // Ensure round is in betting phase
+        // Validate round state (immutable borrow first)
         require!(
-            round.phase == RoundPhase::Betting,
+            ctx.accounts.round.phase == RoundPhase::Betting,
             BinaryError::RoundNotBetting
         );
         require!(
-            clock.unix_timestamp < round.lock_time,
+            clock.unix_timestamp < ctx.accounts.round.lock_time,
             BinaryError::BettingLocked
         );
         require!(amount > 0, BinaryError::InvalidAmount);
 
+        // Capture keys before mutable borrows
+        let round_key = ctx.accounts.round.key();
+        let user_key = ctx.accounts.user.key();
+
         // Transfer SOL from user to round escrow
         let transfer_ix = anchor_lang::solana_program::system_instruction::transfer(
-            &ctx.accounts.user.key(),
-            &ctx.accounts.round.key(),
+            &user_key,
+            &round_key,
             amount,
         );
         anchor_lang::solana_program::program::invoke(
@@ -122,14 +125,15 @@ pub mod binary_market {
 
         // Record the bet
         let bet = &mut ctx.accounts.bet;
-        bet.round = round.key();
-        bet.user = ctx.accounts.user.key();
+        bet.round = round_key;
+        bet.user = user_key;
         bet.side = side;
         bet.amount = amount;
         bet.timestamp = clock.unix_timestamp;
         bet.claimed = false;
 
         // Update pool totals
+        let round = &mut ctx.accounts.round;
         match side {
             BetSide::Up => round.up_pool += amount,
             BetSide::Down => round.down_pool += amount,

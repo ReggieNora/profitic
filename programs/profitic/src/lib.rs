@@ -6,7 +6,7 @@ pub mod instructions;
 
 use instructions::*;
 
-declare_id!("BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz");
+declare_id!("F26VXCqa3qsQrwA9doQrcbykw38D8wqoUWCvVtGjrMKd");
 
 #[program]
 pub mod profitic {

@@ -5,13 +5,13 @@ export const SOLANA_RPC_URL =
 
 export const PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_PROGRAM_ID ||
-    "BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz"
+    "F26VXCqa3qsQrwA9doQrcbykw38D8wqoUWCvVtGjrMKd"
 );
 
 // Binary market program — update after `anchor deploy`
 export const BINARY_MARKET_PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_BINARY_MARKET_PROGRAM_ID ||
-    "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
+    "2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj"
 );
 
 export const API_URL =

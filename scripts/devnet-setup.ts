@@ -24,7 +24,7 @@ import * as path from "path";
 // ── Config ──
 const PROGRAM_ID = new PublicKey(
   process.env.BINARY_MARKET_PROGRAM_ID ||
-    "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
+    "2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj"
 );
 
 const CONFIG_SEED = Buffer.from("binary_config");
