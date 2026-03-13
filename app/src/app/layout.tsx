@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
 import "./globals.css";
+import WalletProvider from "@/components/WalletProvider";
 import Navbar from "@/components/Navbar";
 import BottomNav from "@/components/BottomNav";
-
-// Lazy-load wallet provider so the UI shell renders immediately
-const WalletProvider = dynamic(() => import("@/components/WalletProvider"), {
-  ssr: false,
-});
 
 export const metadata: Metadata = {
   title: "Profitic - Crypto Binary Markets on Solana",
