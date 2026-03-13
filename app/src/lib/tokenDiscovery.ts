@@ -205,7 +205,7 @@ export function formatInterval(seconds: number): string {
  * Fetch price for any asset by CoinGecko id.
  */
 const assetPriceCache: Record<string, { price: number; ts: number }> = {};
-const PRICE_CACHE_TTL = 30_000; // match server cache TTL
+const PRICE_CACHE_TTL = 10_000; // keep client prices fresh
 
 // Track failed Jupiter fetches to avoid retrying every tick
 let jupiterFailedAt = 0;

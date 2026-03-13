@@ -35,10 +35,10 @@ const PYTH_FEED_IDS: Record<string, string> = {
   SOL: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
 };
 
-// ── Cache ──
+// ── Cache (per-asset with individual TTLs) ──
 
-let cache: { data: Record<string, number>; ts: number } | null = null;
-const CACHE_TTL = 10_000; // 10 seconds
+const priceCache: Record<string, { price: number; ts: number }> = {};
+const CACHE_TTL = 5_000; // 5 seconds — Pyth is fast, keep prices fresh
 
 // ── Price source fetchers ──
 
@@ -146,14 +146,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing ids, symbols, or mints" }, { status: 400 });
   }
 
-  // Return cache if fresh
-  if (cache && Date.now() - cache.ts < CACHE_TTL) {
-    return NextResponse.json(cache.data);
-  }
-
   const coingeckoIds = idsParam ? idsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
   const jupiterSymbols = symbolsParam ? symbolsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
   const jupiterMints = mintsParam ? mintsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
+
+  // Check if ALL requested IDs have fresh cache
+  const allRequestedIds = [...coingeckoIds, ...jupiterSymbols, ...jupiterMints];
+  const now = Date.now();
+  const allCached = allRequestedIds.every(
+    (id) => priceCache[id] && now - priceCache[id].ts < CACHE_TTL
+  );
+  if (allCached && allRequestedIds.length > 0) {
+    const cached: Record<string, number> = {};
+    for (const id of allRequestedIds) cached[id] = priceCache[id].price;
+    return NextResponse.json(cached);
+  }
 
   // Separate core vs non-core CoinGecko IDs
   const coreIds = coingeckoIds.filter((id) => id in COINGECKO_TO_SYMBOL);
@@ -216,8 +223,11 @@ export async function GET(req: NextRequest) {
     Object.assign(result, jupPrices);
   }
 
-  // Update cache
-  cache = { data: { ...(cache?.data || {}), ...result }, ts: Date.now() };
+  // Update per-asset cache
+  const ts = Date.now();
+  for (const [id, price] of Object.entries(result)) {
+    priceCache[id] = { price, ts };
+  }
 
   return NextResponse.json(result);
 }
