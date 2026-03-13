@@ -8,10 +8,12 @@ skip-lint = false
 [programs.devnet]
 binary_market = "2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj"
 profitic = "F26VXCqa3qsQrwA9doQrcbykw38D8wqoUWCvVtGjrMKd"
+yield_farm = "EyAQAxKyjWbSbf991RftzpXHkcGqgaG2VDLjSUgjE1M6"
 
 [programs.localnet]
 binary_market = "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
 profitic = "BHrdakmSddvoLJ3zNYRnXzBGqo2ZGCbUpWCJiftoUisz"
+yield_farm = "EyAQAxKyjWbSbf991RftzpXHkcGqgaG2VDLjSUgjE1M6"
 
 [registry]
 url = "https://api.apr.dev"
