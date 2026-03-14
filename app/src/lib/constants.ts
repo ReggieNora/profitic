@@ -26,7 +26,7 @@ export const API_URL =
 export const LAMPORTS_PER_SOL = 1_000_000_000;
 
 export const ADMIN_WALLETS = [
-  "YourAdminWalletPublicKeyHere11111111111111111",
+  "5oVM6AcRnXMjFVJhDNMocw2fkBfUBfmRZvQKeXu5zEtp",
 ];
 
 export const MARKET_CATEGORIES = [

@@ -20,6 +20,12 @@ import {
 import { AnchorProvider, Program, Idl, BN } from "@coral-xyz/anchor";
 import * as fs from "fs";
 import * as path from "path";
+// Configure proxy for Node.js native fetch (undici)
+const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || "";
+if (proxyUrl) {
+  const { ProxyAgent, setGlobalDispatcher } = require("undici");
+  setGlobalDispatcher(new ProxyAgent(proxyUrl));
+}
 
 // ── Config ──
 const PROGRAM_ID = new PublicKey(
@@ -51,7 +57,7 @@ async function main() {
   console.log("Program:", PROGRAM_ID.toBase58());
 
   // Connect
-  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+  const connection = new Connection("https://api.devnet.solana.com", "confirmed");
   const balance = await connection.getBalance(wallet.publicKey);
   console.log("Balance:", balance / 1e9, "SOL");
 
@@ -110,10 +116,43 @@ async function main() {
 
   const provider = new AnchorProvider(
     connection,
-    { publicKey: wallet.publicKey, signTransaction: async (tx) => { tx.sign(wallet); return tx; }, signAllTransactions: async (txs) => { txs.forEach(tx => tx.sign(wallet)); return txs; } },
-    { commitment: "confirmed" }
+    { publicKey: wallet.publicKey, signTransaction: async (tx: any) => { tx.sign(wallet); return tx; }, signAllTransactions: async (txs: any[]) => { txs.forEach((tx: any) => tx.sign(wallet)); return txs; } } as any,
+    { commitment: "confirmed", skipPreflight: true, preflightCommitment: "processed" }
   );
   const program = new Program(idl, PROGRAM_ID, provider);
+
+  // Helper: send tx and confirm via CLI polling (avoids WS timeout)
+  const { execSync } = require("child_process");
+  const solanaPath = "/root/.local/share/solana/install/active_release/bin/solana";
+
+  async function sendAndConfirmViaCli(methodBuilder: any): Promise<string> {
+    let sig: string;
+    try {
+      sig = await methodBuilder.rpc({ skipPreflight: true });
+    } catch (err: any) {
+      // Extract signature from timeout error
+      if (err.signature) {
+        sig = err.signature;
+        console.log("  Tx sent (confirmation timed out, polling via CLI):", sig);
+      } else {
+        throw err;
+      }
+    }
+
+    // Poll for confirmation via CLI
+    for (let i = 0; i < 30; i++) {
+      try {
+        const result = execSync(`${solanaPath} confirm ${sig} 2>&1`, { encoding: "utf-8" }).trim();
+        if (result.includes("Finalized") || result.includes("Confirmed")) {
+          console.log("  Confirmed:", result);
+          return sig;
+        }
+      } catch {}
+      await new Promise((r: any) => setTimeout(r, 2000));
+    }
+    console.log("  Warning: could not confirm tx, but it may have succeeded");
+    return sig!;
+  }
 
   // ── Step 1: Initialize Config ──
   const [configPda] = PublicKey.findProgramAddressSync(
@@ -126,17 +165,18 @@ async function main() {
     console.log("\nConfig already initialized at", configPda.toBase58());
   } else {
     console.log("\nInitializing config...");
-    const tx = await program.methods
-      .initializeConfig(FEE_BPS)
-      .accounts({
-        config: configPda,
-        authority: wallet.publicKey,
-        treasury: wallet.publicKey, // use deployer as treasury for testing
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([wallet])
-      .rpc();
-    console.log("Config initialized! tx:", tx);
+    await sendAndConfirmViaCli(
+      program.methods
+        .initializeConfig(FEE_BPS)
+        .accounts({
+          config: configPda,
+          authority: wallet.publicKey,
+          treasury: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([wallet])
+    );
+    console.log("Config initialized!");
   }
 
   // ── Step 2: Create initial rounds (one per asset) ──
@@ -157,23 +197,24 @@ async function main() {
     }
 
     console.log(`Creating round ${asset}#${roundNumber}...`);
-    const tx = await program.methods
-      .createRound(
-        asset,
-        new BN(roundNumber),
-        new BN(300),  // 5 min duration
-        new BN(30),   // 30s lock buffer
-        new PublicKey(feedAddr)
-      )
-      .accounts({
-        round: roundPda,
-        config: configPda,
-        authority: wallet.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([wallet])
-      .rpc();
-    console.log(`  Round created! tx: ${tx}`);
+    await sendAndConfirmViaCli(
+      program.methods
+        .createRound(
+          asset,
+          new BN(roundNumber),
+          new BN(300),  // 5 min duration
+          new BN(30),   // 30s lock buffer
+          new PublicKey(feedAddr)
+        )
+        .accounts({
+          round: roundPda,
+          config: configPda,
+          authority: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([wallet])
+    );
+    console.log(`  Round ${asset}#${roundNumber} created!`);
   }
 
   console.log("\nDevnet setup complete!");

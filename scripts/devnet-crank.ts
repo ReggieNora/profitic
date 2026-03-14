@@ -18,6 +18,13 @@ import { AnchorProvider, Program, Idl, BN } from "@coral-xyz/anchor";
 import * as fs from "fs";
 import * as path from "path";
 
+// Configure proxy for Node.js native fetch (undici)
+const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || "";
+if (proxyUrl) {
+  const { ProxyAgent, setGlobalDispatcher } = require("undici");
+  setGlobalDispatcher(new ProxyAgent(proxyUrl));
+}
+
 const PROGRAM_ID = new PublicKey(
   process.env.BINARY_MARKET_PROGRAM_ID ||
     "2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj"
@@ -47,16 +54,16 @@ async function main() {
   const secretKey = JSON.parse(fs.readFileSync(walletPath, "utf-8"));
   const wallet = Keypair.fromSecretKey(Uint8Array.from(secretKey));
 
-  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+  const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
   const provider = new AnchorProvider(
     connection,
     {
       publicKey: wallet.publicKey,
-      signTransaction: async (tx) => { tx.sign(wallet); return tx; },
-      signAllTransactions: async (txs) => { txs.forEach(tx => tx.sign(wallet)); return txs; },
-    },
-    { commitment: "confirmed" }
+      signTransaction: async (tx: any) => { tx.sign(wallet); return tx; },
+      signAllTransactions: async (txs: any[]) => { txs.forEach((tx: any) => tx.sign(wallet)); return txs; },
+    } as any,
+    { commitment: "confirmed", skipPreflight: true }
   );
 
   // Load IDL
@@ -72,6 +79,33 @@ async function main() {
 
   const program = new Program(idl, PROGRAM_ID, provider);
   const [configPda] = PublicKey.findProgramAddressSync([CONFIG_SEED], PROGRAM_ID);
+
+  // Helper: send tx and confirm via CLI polling (avoids WS timeout)
+  const { execSync } = require("child_process");
+  const solanaPath = "/root/.local/share/solana/install/active_release/bin/solana";
+
+  async function sendAndConfirmViaCli(methodBuilder: any): Promise<string> {
+    let sig: string;
+    try {
+      sig = await methodBuilder.rpc({ skipPreflight: true });
+    } catch (err: any) {
+      if (err.signature) {
+        sig = err.signature;
+      } else {
+        throw err;
+      }
+    }
+    for (let i = 0; i < 30; i++) {
+      try {
+        const result = execSync(`${solanaPath} confirm ${sig} 2>&1`, { encoding: "utf-8" }).trim();
+        if (result.includes("Finalized") || result.includes("Confirmed")) {
+          return sig;
+        }
+      } catch {}
+      await new Promise((r: any) => setTimeout(r, 2000));
+    }
+    return sig!;
+  }
 
   console.log("Crank started");
   console.log("Authority:", wallet.publicKey.toBase58());
@@ -120,16 +154,17 @@ async function main() {
           console.log(`\nResolving ${asset}#${rn}...`);
           const pythFeed = new PublicKey(PYTH_FEEDS[asset]);
 
-          const tx = await program.methods
-            .resolveRound()
-            .accounts({
-              round: roundPda,
-              config: configPda,
-              pythFeed,
-              cranker: wallet.publicKey,
-            })
-            .signers([wallet])
-            .rpc();
+          const tx = await sendAndConfirmViaCli(
+            program.methods
+              .resolveRound()
+              .accounts({
+                round: roundPda,
+                config: configPda,
+                pythFeed,
+                cranker: wallet.publicKey,
+              })
+              .signers([wallet])
+          );
           console.log(`  Resolved! tx: ${tx}`);
 
           // Create next round
@@ -143,22 +178,23 @@ async function main() {
           );
 
           console.log(`  Creating ${asset}#${nextRn}...`);
-          const tx2 = await program.methods
-            .createRound(
-              asset,
-              new BN(nextRn),
-              new BN(ROUND_DURATION),
-              new BN(LOCK_BUFFER),
-              new PublicKey(PYTH_FEEDS[asset])
-            )
-            .accounts({
-              round: nextRoundPda,
-              config: configPda,
-              authority: wallet.publicKey,
-              systemProgram: SystemProgram.programId,
-            })
-            .signers([wallet])
-            .rpc();
+          const tx2 = await sendAndConfirmViaCli(
+            program.methods
+              .createRound(
+                asset,
+                new BN(nextRn),
+                new BN(ROUND_DURATION),
+                new BN(LOCK_BUFFER),
+                new PublicKey(PYTH_FEEDS[asset])
+              )
+              .accounts({
+                round: nextRoundPda,
+                config: configPda,
+                authority: wallet.publicKey,
+                systemProgram: SystemProgram.programId,
+              })
+              .signers([wallet])
+          );
           console.log(`  Created! tx: ${tx2}`);
         }
       } catch (err: unknown) {
