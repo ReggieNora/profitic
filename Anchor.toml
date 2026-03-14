@@ -19,7 +19,7 @@ yield_farm = "EyAQAxKyjWbSbf991RftzpXHkcGqgaG2VDLjSUgjE1M6"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [test]
