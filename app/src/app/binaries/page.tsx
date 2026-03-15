@@ -11,7 +11,7 @@ type FilterTab = "all" | "core" | "trending";
 
 export default function BinariesPage() {
   const { connected } = useWallet();
-  const { markets, assets, livePrices, placeBet, loading, demoBalance, txError, lastPayout } = useBinaryMarkets();
+  const { markets, assets, livePrices, placeBet, loading, demoBalance, txError, lastPayout, userBets } = useBinaryMarkets();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [assetFilter, setAssetFilter] = useState<string | null>(null);
 
@@ -192,6 +192,8 @@ export default function BinariesPage() {
                       market={m}
                       livePrice={livePrices[m.asset.symbol] || 0}
                       onBet={(side, amt) => handleBet(m.id, side, amt)}
+                      userBetSide={userBets.find((b) => b.marketId === m.id)?.side ?? null}
+                      userBetAmount={userBets.find((b) => b.marketId === m.id)?.amount}
                     />
                   ))}
               </div>
@@ -218,6 +220,8 @@ export default function BinariesPage() {
                       market={m}
                       livePrice={livePrices[m.asset.symbol] || 0}
                       onBet={(side, amt) => handleBet(m.id, side, amt)}
+                      userBetSide={userBets.find((b) => b.marketId === m.id)?.side ?? null}
+                      userBetAmount={userBets.find((b) => b.marketId === m.id)?.amount}
                     />
                   ))}
               </div>
@@ -237,6 +241,8 @@ export default function BinariesPage() {
                     market={m}
                     livePrice={livePrices[m.asset.symbol] || 0}
                     onBet={(side, amt) => handleBet(m.id, side, amt)}
+                    userBetSide={userBets.find((b) => b.marketId === m.id)?.side ?? null}
+                    userBetAmount={userBets.find((b) => b.marketId === m.id)?.amount}
                   />
                 ))}
               </div>

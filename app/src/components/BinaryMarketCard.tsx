@@ -12,6 +12,8 @@ interface Props {
   market: BinaryMarket;
   livePrice: number;
   onBet: (side: "up" | "down", amount: number) => void;
+  userBetSide?: "up" | "down" | null;
+  userBetAmount?: number; // lamports
 }
 
 const QUICK_AMOUNTS = [0.1, 0.5, 1, 5];
@@ -32,10 +34,11 @@ function jitteredPrice(base: number, symbol: string): number {
   return base * (1 + (Math.random() - 0.5) * 2 * (bps / 10000));
 }
 
-export default function BinaryMarketCard({ market, livePrice, onBet }: Props) {
+export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide, userBetAmount }: Props) {
   const [betAmount, setBetAmount] = useState("");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [countdown, setCountdown] = useState("");
+  const [confirmFlash, setConfirmFlash] = useState<"up" | "down" | null>(null);
   const driftRef = useRef(0);
   const lastApiPrice = useRef(0);
 
@@ -107,6 +110,8 @@ export default function BinaryMarketCard({ market, livePrice, onBet }: Props) {
     if (amt <= 0 || market.phase !== "betting") return;
     onBet(side, amt);
     setBetAmount("");
+    setConfirmFlash(side);
+    setTimeout(() => setConfirmFlash(null), 3000);
   };
 
   const formatUsd = (v: number) => {
@@ -252,6 +257,35 @@ export default function BinaryMarketCard({ market, livePrice, onBet }: Props) {
           />
         </div>
       </div>
+
+      {/* Bet confirmation flash */}
+      {confirmFlash && (
+        <div className={`mx-4 mb-2 rounded-xl p-2.5 text-center animate-pulse ${
+          confirmFlash === "up"
+            ? "border border-green-500/30 bg-green-500/10"
+            : "border border-red-500/30 bg-red-500/10"
+        }`}>
+          <p className={`text-xs font-bold ${confirmFlash === "up" ? "text-green-400" : "text-red-400"}`}>
+            Bet placed — {confirmFlash.toUpperCase()}
+          </p>
+        </div>
+      )}
+
+      {/* Active bet indicator */}
+      {userBetSide && !confirmFlash && market.phase !== "complete" && (
+        <div className={`mx-4 mb-2 flex items-center justify-between rounded-xl px-3 py-2 ${
+          userBetSide === "up"
+            ? "border border-green-500/20 bg-green-500/5"
+            : "border border-red-500/20 bg-red-500/5"
+        }`}>
+          <span className={`text-[10px] font-bold ${userBetSide === "up" ? "text-green-400" : "text-red-400"}`}>
+            Your bet: {userBetSide.toUpperCase()}
+          </span>
+          <span className="text-[10px] font-bold text-white/60">
+            {userBetAmount ? formatLamports(userBetAmount) : "—"} SOL
+          </span>
+        </div>
+      )}
 
       {/* Betting UI or result */}
       <div className="px-4 pb-4">
