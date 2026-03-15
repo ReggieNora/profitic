@@ -11,7 +11,7 @@ type FilterTab = "all" | "core" | "trending";
 
 export default function BinariesPage() {
   const { connected } = useWallet();
-  const { markets, assets, livePrices, placeBet, loading } = useBinaryMarkets();
+  const { markets, assets, livePrices, placeBet, loading, demoBalance, txError, lastPayout } = useBinaryMarkets();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [assetFilter, setAssetFilter] = useState<string | null>(null);
 
@@ -72,6 +72,38 @@ export default function BinariesPage() {
           ))}
         </div>
       </div>
+
+      {/* Balance display */}
+      {connected && demoBalance !== null && (
+        <div className="mb-5 flex items-center justify-between rounded-2xl border border-surface-50/50 bg-surface-300 px-4 py-3 animate-fade-up" style={{ animationDelay: "75ms" }}>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-400">Balance</span>
+          </div>
+          <span className="text-lg font-black tabular-nums text-white">{demoBalance.toFixed(4)} SOL</span>
+        </div>
+      )}
+
+      {/* Payout notification */}
+      {lastPayout && (
+        <div className={`mb-5 rounded-2xl border p-3 text-center animate-fade-up ${
+          lastPayout.won
+            ? "border-green-500/30 bg-green-500/10"
+            : "border-red-500/30 bg-red-500/10"
+        }`}>
+          <p className={`text-sm font-bold ${lastPayout.won ? "text-green-400" : "text-red-400"}`}>
+            {lastPayout.won
+              ? `Won ${lastPayout.amount.toFixed(4)} SOL!`
+              : `Lost ${lastPayout.amount.toFixed(4)} SOL`}
+          </p>
+        </div>
+      )}
+
+      {/* Error display */}
+      {txError && (
+        <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/5 p-3 text-center animate-fade-up">
+          <p className="text-xs font-bold text-red-400">{txError}</p>
+        </div>
+      )}
 
       {/* Connect wallet prompt */}
       {!connected && (

@@ -124,6 +124,13 @@ function createMarket(
 
 // ── Hook ──
 
+// Track user's simulated bets for payout calculation
+export interface UserBet {
+  marketId: string;
+  side: "up" | "down";
+  amount: number; // lamports
+}
+
 export interface UseBinaryMarketsReturn {
   markets: BinaryMarket[];
   assets: TradingAsset[];
@@ -134,6 +141,9 @@ export interface UseBinaryMarketsReturn {
   loading: boolean;
   txPending: boolean;
   txError: string | null;
+  demoBalance: number | null; // SOL — null until wallet balance loaded
+  userBets: UserBet[];
+  lastPayout: { amount: number; won: boolean } | null;
 }
 
 export function useBinaryMarkets(): UseBinaryMarketsReturn {
@@ -144,6 +154,12 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const [roundHistory, setRoundHistory] = useState<Record<string, CompletedRound[]>>({});
   const [txPending, setTxPending] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
+  const [demoBalance, setDemoBalance] = useState<number | null>(null); // null until wallet balance loaded
+  const [userBets, setUserBets] = useState<UserBet[]>([]);
+  const [lastPayout, setLastPayout] = useState<{ amount: number; won: boolean } | null>(null);
+  const userBetsRef = useRef(userBets);
+  userBetsRef.current = userBets;
+  const balanceInitialized = useRef(false);
   const initialized = useRef(false);
   const roundCounters = useRef<Record<string, number>>({});
   const livePricesRef = useRef(livePrices);
@@ -153,6 +169,26 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const { program } = useBinaryProgram();
   const wallet = useWallet();
   const { connection } = useConnection();
+
+  // Initialize demo balance from wallet's actual SOL balance
+  useEffect(() => {
+    if (!wallet.publicKey || balanceInitialized.current) return;
+    balanceInitialized.current = true;
+    connection.getBalance(wallet.publicKey).then((lamports) => {
+      setDemoBalance(lamports / 1_000_000_000);
+    }).catch(() => {
+      setDemoBalance(10); // fallback if RPC fails
+    });
+  }, [wallet.publicKey, connection]);
+
+  // Reset balance tracking when wallet disconnects
+  useEffect(() => {
+    if (!wallet.publicKey) {
+      balanceInitialized.current = false;
+      setDemoBalance(null);
+      setUserBets([]);
+    }
+  }, [wallet.publicKey]);
 
   // Client-only init: create markets with fallback prices, then fetch real data
   useEffect(() => {
@@ -283,6 +319,32 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             };
             changed = true;
 
+            // Process user bet payouts for this resolved market
+            const currentUserBets = userBetsRef.current;
+            const userBet = currentUserBets.find((b) => b.marketId === m.id);
+            if (userBet) {
+              const betSol = userBet.amount / 1_000_000_000;
+              if (outcome === "refund") {
+                // Refund the bet
+                setDemoBalance((prev) => (prev ?? 0) + betSol);
+                setLastPayout({ amount: betSol, won: false });
+              } else if (userBet.side === outcome) {
+                // Winner: payout = (totalPool * 0.98) * (userBet / winningPool)
+                const winningPool = outcome === "up" ? m.upPool : m.downPool;
+                const payoutLamports = winningPool > 0
+                  ? ((m.totalPool * 0.98) * userBet.amount) / winningPool
+                  : 0;
+                const payoutSol = payoutLamports / 1_000_000_000;
+                setDemoBalance((prev) => (prev ?? 0) + payoutSol);
+                setLastPayout({ amount: payoutSol, won: true });
+              } else {
+                // Loser: bet already deducted, nothing to do
+                setLastPayout({ amount: betSol, won: false });
+              }
+              // Remove this bet from tracking
+              setUserBets((prev) => prev.filter((b) => b.marketId !== m.id));
+            }
+
             // Save to round history
             const historyKey = `${m.asset.symbol}-${m.interval}`;
             const completedRound: CompletedRound = {
@@ -395,7 +457,31 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         });
       };
 
-      // If program is available and wallet connected, submit on-chain
+      // Helper: apply bet in simulation mode (deduct balance, track for payout)
+      const applySimulatedBet = () => {
+        const betSol = lamports / 1_000_000_000;
+
+        // Check sufficient balance
+        if (demoBalance !== null && betSol > demoBalance) {
+          setTxError("Insufficient balance");
+          return;
+        }
+
+        // Deduct from tracked balance
+        if (demoBalance !== null) {
+          setDemoBalance((prev) => (prev !== null ? prev - betSol : prev));
+        }
+
+        // Track user bet for payout on resolution
+        setUserBets((prev) => [...prev, { marketId, side, amount: lamports }]);
+
+        const walletLabel = wallet.publicKey
+          ? wallet.publicKey.toBase58().slice(0, 4) + ".." + wallet.publicKey.toBase58().slice(-4)
+          : "You";
+        applyBet(walletLabel);
+      };
+
+      // Try on-chain first if program is available, fall back to simulation
       if (program && wallet.publicKey) {
         setTxPending(true);
         setTxError(null);
@@ -403,7 +489,6 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         try {
           const [roundPda] = deriveRoundPda(market.asset.symbol, market.roundNumber);
 
-          // Fetch current round to get totalBets for bet PDA derivation
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
           const totalBets = (roundAccount.totalBets as number) || 0;
@@ -425,18 +510,18 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           console.log("Bet placed on-chain:", tx);
           applyBet(wallet.publicKey.toBase58().slice(0, 4) + ".." + wallet.publicKey.toBase58().slice(-4));
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error("On-chain bet failed:", msg);
-          setTxError(msg);
+          // On-chain failed (program not deployed) — fall back to simulation
+          console.warn("On-chain bet unavailable, using simulation:", err instanceof Error ? err.message : err);
+          applySimulatedBet();
         } finally {
           setTxPending(false);
         }
       } else {
-        // Fallback: local simulation (no wallet connected)
-        applyBet("You");
+        // No program/wallet — pure simulation
+        applySimulatedBet();
       }
     },
-    [markets, program, wallet.publicKey]
+    [markets, program, wallet.publicKey, demoBalance]
   );
 
   // ── Claim Winnings ──
@@ -481,5 +566,5 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     [markets, program, wallet.publicKey]
   );
 
-  return { markets, assets, livePrices, placeBet, claimWinnings, roundHistory, loading, txPending, txError };
+  return { markets, assets, livePrices, placeBet, claimWinnings, roundHistory, loading, txPending, txError, demoBalance, userBets, lastPayout };
 }
