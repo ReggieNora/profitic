@@ -1,9 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMarket } from "@/hooks/useMarket";
+import { useTrade } from "@/hooks/useTrade";
+import { useSolBalance } from "@/hooks/useSolBalance";
 import TradePanel from "@/components/TradePanel";
 import BondingCurveChart from "@/components/BondingCurveChart";
 import CryptoPriceChart from "@/components/CryptoPriceChart";
@@ -38,13 +40,35 @@ export default function MarketDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { market, trades, loading, error, refetch } = useMarket(id);
+  const { buyShares, sellShares, loading: tradeLoading, error: tradeError } = useTrade();
+  const { refresh: refreshBalance } = useSolBalance();
+  const [tradeResult, setTradeResult] = useState<{ success: boolean; message: string; txSignature?: string } | null>(null);
 
   const handleTrade = async (trade: TradeFormData) => {
-    console.log("Trade submitted:", trade);
-    alert(
-      `Trade submitted: ${trade.direction} ${trade.amount} ${trade.outcome.toUpperCase()} shares.\n\nIn production, this calls the Solana program.`
-    );
-    refetch();
+    if (!market) return;
+    setTradeResult(null);
+
+    let result;
+    if (trade.direction === "buy") {
+      result = await buyShares(market.publicKey, trade.outcome, trade.amount);
+    } else {
+      result = await sellShares(market.publicKey, trade.outcome, trade.amount);
+    }
+
+    if (result.success) {
+      setTradeResult({
+        success: true,
+        message: `${trade.direction === "buy" ? "Bought" : "Sold"} ${trade.amount} SOL of ${trade.outcome.toUpperCase()}`,
+        txSignature: result.txSignature,
+      });
+      refreshBalance();
+      refetch();
+    } else {
+      setTradeResult({
+        success: false,
+        message: result.error || "Transaction failed",
+      });
+    }
   };
 
   if (loading) {
@@ -144,6 +168,39 @@ export default function MarketDetailPage() {
             <span className="h-1.5 w-1.5 rounded-full bg-primary-400" />
             <span className="text-[9px] font-bold text-primary-400">{market.oracleSource || "Pyth"}</span>
           </span>
+        </div>
+      )}
+
+      {/* Trade result banner */}
+      {tradeResult && (
+        <div
+          className={`mb-4 rounded-2xl p-4 text-sm font-medium animate-fade-up ${
+            tradeResult.success
+              ? "bg-green-500/15 text-green-400 border border-green-500/20"
+              : "bg-red-500/15 text-red-400 border border-red-500/20"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <p>{tradeResult.message}</p>
+            <button
+              onClick={() => setTradeResult(null)}
+              className="ml-3 text-gray-400 hover:text-white"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          {tradeResult.txSignature && (
+            <a
+              href={`https://explorer.solana.com/tx/${tradeResult.txSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 block text-xs text-primary-400 hover:underline"
+            >
+              View on Solana Explorer
+            </a>
+          )}
         </div>
       )}
 

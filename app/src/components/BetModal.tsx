@@ -13,6 +13,8 @@ import {
   ammYesProbability,
 } from "@/lib/bondingCurve";
 import { PROTOCOL_FEE_PERCENT } from "@/types";
+import { useTrade } from "@/hooks/useTrade";
+import { useSolBalance } from "@/hooks/useSolBalance";
 
 interface BetModalProps {
   market: Market;
@@ -35,8 +37,11 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
   const [amount, setAmount] = useState("");
   const [outcome, setOutcome] = useState<"yes" | "no">(side);
   const [loading, setLoading] = useState(false);
+  const [txResult, setTxResult] = useState<{ success: boolean; message: string; txSignature?: string } | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { buyShares, error: tradeError, clearError } = useTrade();
+  const { refresh: refreshBalance } = useSolBalance();
 
   const isCryptoUpDown = market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down";
   const activeSide = isCryptoUpDown ? outcome : side;
@@ -75,9 +80,11 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
       setAmount("");
       setOutcome(side);
       setLoading(false);
+      setTxResult(null);
+      clearError();
       setTimeout(() => inputRef.current?.focus(), 300);
     }
-  }, [open, side]);
+  }, [open, side, clearError]);
 
   // Lock body scroll when open
   useEffect(() => {
@@ -107,14 +114,31 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
   const handleSubmit = async () => {
     if (amountNum <= 0) return;
     setLoading(true);
+    setTxResult(null);
+    clearError();
     try {
-      console.log("Bet submitted:", { side: activeSide, amount: amountNum });
-      alert(
-        `Bet placed: ${amountNum} SOL on ${sideLabel}.\n\nIn production, this calls the Solana program.`
-      );
-      onClose();
+      const result = await buyShares(market.publicKey, activeSide, amountNum);
+      if (result.success) {
+        setTxResult({
+          success: true,
+          message: `Bet placed! ${amountNum} SOL on ${sideLabel}`,
+          txSignature: result.txSignature,
+        });
+        refreshBalance();
+        // Auto-close after showing success
+        setTimeout(() => onClose(), 2000);
+      } else {
+        setTxResult({
+          success: false,
+          message: result.error || "Transaction failed",
+        });
+      }
     } catch (err) {
       console.error("Bet failed:", err);
+      setTxResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Transaction failed",
+      });
     } finally {
       setLoading(false);
     }
@@ -249,6 +273,29 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
               </div>
             )}
 
+            {/* Transaction result feedback */}
+            {txResult && (
+              <div
+                className={`rounded-xl p-3 text-sm font-medium animate-fade-in ${
+                  txResult.success
+                    ? "bg-green-500/15 text-green-400 border border-green-500/20"
+                    : "bg-red-500/15 text-red-400 border border-red-500/20"
+                }`}
+              >
+                <p>{txResult.message}</p>
+                {txResult.txSignature && (
+                  <a
+                    href={`https://explorer.solana.com/tx/${txResult.txSignature}?cluster=devnet`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 block text-xs text-primary-400 hover:underline"
+                  >
+                    View on Solana Explorer
+                  </a>
+                )}
+              </div>
+            )}
+
             {/* Trade button */}
             {connected ? (
               <button
@@ -259,7 +306,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Processing...
+                    Sending transaction...
                   </span>
                 ) : (
                   "Trade"
@@ -419,6 +466,31 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
           </div>
         )}
 
+        {/* Transaction result feedback */}
+        {txResult && (
+          <div className="px-5">
+            <div
+              className={`rounded-2xl p-3 text-sm font-medium animate-fade-in ${
+                txResult.success
+                  ? "bg-green-500/15 text-green-400 border border-green-500/20"
+                  : "bg-red-500/15 text-red-400 border border-red-500/20"
+              }`}
+            >
+              <p>{txResult.message}</p>
+              {txResult.txSignature && (
+                <a
+                  href={`https://explorer.solana.com/tx/${txResult.txSignature}?cluster=devnet`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 block text-xs text-primary-400 hover:underline"
+                >
+                  View on Solana Explorer
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Submit area */}
         <div className="px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:pb-5">
           {connected ? (
@@ -434,7 +506,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Processing...
+                  Sending transaction...
                 </span>
               ) : (
                 `Place Bet — ${amountNum > 0 ? `${amountNum} SOL` : side.toUpperCase()}`
