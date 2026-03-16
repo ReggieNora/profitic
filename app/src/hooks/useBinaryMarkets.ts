@@ -65,7 +65,7 @@ export interface CompletedRound {
 
 // ── Constants ──
 
-const LOCK_BUFFER_SECONDS = 10; // lock bets 10s before expiry
+const LOCK_BUFFER_SECONDS = 30; // lock bets 30s before expiry (must match on-chain lock_buffer)
 
 const DEMO_WALLETS = [
   "7xKz..aF9p", "3mRq..bT2x", "9pLw..cK4d", "5nHv..dM8s",
