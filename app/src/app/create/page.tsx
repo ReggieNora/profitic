@@ -17,6 +17,7 @@ import {
 } from "@/types";
 import { MARKET_CATEGORIES } from "@/lib/constants";
 import { useCryptoPrice } from "@/hooks/useCryptoPrice";
+import { useCreateMarket } from "@/hooks/useCreateMarket";
 
 const CATEGORY_OPTIONS = MARKET_CATEGORIES.filter((c) => c.value !== "all") as readonly { label: string; value: string }[];
 
@@ -97,7 +98,9 @@ function MarketTypeSelector({
 function CryptoUpDownForm() {
   const router = useRouter();
   const { publicKey } = useWallet();
+  const { createMarket, loading: txLoading, error: txError, clearError } = useCreateMarket();
   const [loading, setLoading] = useState(false);
+  const [txResult, setTxResult] = useState<{ success: boolean; message: string; txSignature?: string; marketPubkey?: string } | null>(null);
   const [form, setForm] = useState<CryptoUpDownFormData>({
     asset: "BTC",
     timeframe: "15m",
@@ -136,35 +139,45 @@ function CryptoUpDownForm() {
     e.preventDefault();
     if (!isValid) return;
     setLoading(true);
+    setTxResult(null);
+    clearError();
     try {
       const resolutionTimestamp = Math.floor(Date.now() / 1000) + timeframeMeta.seconds;
-      console.log("Creating Crypto Up/Down market:", {
-        marketType: "crypto_updown",
-        asset: form.asset,
-        timeframe: form.timeframe,
-        subtype: form.subtype,
-        strikePrice: form.subtype === "price_target" ? strikeVal : null,
-        startPrice: livePrice,
+      const dataSource = `pyth:${form.asset}`;
+
+      const result = await createMarket(
         question,
         description,
         resolutionTimestamp,
-        creator: publicKey?.toBase58(),
-        initialYesLiquidity: yesLiq,
-        initialNoLiquidity: noLiq,
-        oracleSource: "pyth",
-      });
-
-      alert(
-        `Crypto Up/Down market created!\n\n${question}\n\nStart price: $${livePrice.toLocaleString()}\nExpires: ${timeframeMeta.label}\nPool: ${totalLiq} SOL (${yesLiq} YES / ${noLiq} NO)\nProbability: YES ${startingProb}%\nOracle: Pyth Network\n2% protocol fee on all trades.\n\nIn production, this sends a createMarket transaction to Solana.`
+        dataSource
       );
-      router.push("/");
+
+      if (result.success) {
+        setTxResult({
+          success: true,
+          message: `Market created on-chain!`,
+          txSignature: result.txSignature,
+          marketPubkey: result.marketPubkey,
+        });
+        setTimeout(() => router.push(`/market/${result.marketPubkey}`), 3000);
+      } else {
+        setTxResult({
+          success: false,
+          message: result.error || "Transaction failed",
+        });
+      }
     } catch (err) {
       console.error("Failed to create crypto market:", err);
-      alert("Failed to create market. Please try again.");
+      setTxResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Failed to create market",
+      });
     } finally {
       setLoading(false);
     }
   };
+
+  const isSubmitting = loading || txLoading;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5 animate-fade-up">
@@ -415,16 +428,44 @@ function CryptoUpDownForm() {
         </div>
       </div>
 
+      {/* Transaction Result */}
+      {txResult && (
+        <div
+          className={`rounded-2xl p-4 text-sm font-medium animate-fade-in ${
+            txResult.success
+              ? "bg-green-500/15 text-green-400 border border-green-500/20"
+              : "bg-red-500/15 text-red-400 border border-red-500/20"
+          }`}
+        >
+          <p>{txResult.message}</p>
+          {txResult.txSignature && (
+            <a
+              href={`https://explorer.solana.com/tx/${txResult.txSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 block text-xs text-primary-400 hover:underline"
+            >
+              View transaction on Solana Explorer
+            </a>
+          )}
+          {txResult.marketPubkey && (
+            <p className="mt-1 text-xs text-gray-500">
+              Market: {txResult.marketPubkey.slice(0, 8)}...{txResult.marketPubkey.slice(-8)}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Submit */}
       <button
         type="submit"
-        disabled={!isValid || loading}
+        disabled={!isValid || isSubmitting}
         className="btn-primary w-full py-3.5"
       >
-        {loading ? (
+        {isSubmitting ? (
           <span className="flex items-center justify-center gap-2">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-            Creating...
+            Sending transaction...
           </span>
         ) : (
           `Create ${form.asset} ${form.subtype === "up_down" ? "Up/Down" : "Price Target"} Market`
@@ -440,7 +481,9 @@ function CryptoUpDownForm() {
 function PredictionMarketForm() {
   const router = useRouter();
   const { publicKey } = useWallet();
+  const { createMarket, loading: txLoading, error: txError, clearError } = useCreateMarket();
   const [loading, setLoading] = useState(false);
+  const [txResult, setTxResult] = useState<{ success: boolean; message: string; txSignature?: string; marketPubkey?: string } | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [form, setForm] = useState<MarketFormData>({
     question: "",
@@ -488,33 +531,47 @@ function PredictionMarketForm() {
     if (!isValid) return;
 
     setLoading(true);
+    setTxResult(null);
+    clearError();
     try {
       const dateTime = new Date(
         `${form.resolutionDate}T${form.resolutionTime}`
       );
       const resolutionTimestamp = Math.floor(dateTime.getTime() / 1000);
 
-      console.log("Creating market:", {
-        ...form,
+      const result = await createMarket(
+        form.question.trim(),
+        form.description.trim(),
         resolutionTimestamp,
-        creator: publicKey?.toBase58(),
-        initialYesLiquidity: yesLiq,
-        initialNoLiquidity: noLiq,
-        totalLiquidity: totalLiq,
-        startingProbability: `YES ${startingProb}%`,
-      });
-
-      alert(
-        `Market creation submitted!\n\nInitial liquidity: ${totalLiq} SOL (${yesLiq} YES / ${noLiq} NO)\nStarting probability: YES ${startingProb}%\n2% protocol fee on all trades.\n\nIn production, this sends a createMarket + addLiquidity transaction to the Solana program.`
+        form.dataSourceUrl.trim()
       );
-      router.push("/");
+
+      if (result.success) {
+        setTxResult({
+          success: true,
+          message: "Market created on-chain!",
+          txSignature: result.txSignature,
+          marketPubkey: result.marketPubkey,
+        });
+        setTimeout(() => router.push(`/market/${result.marketPubkey}`), 3000);
+      } else {
+        setTxResult({
+          success: false,
+          message: result.error || "Transaction failed",
+        });
+      }
     } catch (err) {
       console.error("Failed to create market:", err);
-      alert("Failed to create market. Please try again.");
+      setTxResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Failed to create market",
+      });
     } finally {
       setLoading(false);
     }
   };
+
+  const isSubmitting = loading || txLoading;
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -808,16 +865,44 @@ function PredictionMarketForm() {
         </div>
       )}
 
+      {/* Transaction Result */}
+      {txResult && (
+        <div
+          className={`rounded-2xl p-4 text-sm font-medium animate-fade-in ${
+            txResult.success
+              ? "bg-green-500/15 text-green-400 border border-green-500/20"
+              : "bg-red-500/15 text-red-400 border border-red-500/20"
+          }`}
+        >
+          <p>{txResult.message}</p>
+          {txResult.txSignature && (
+            <a
+              href={`https://explorer.solana.com/tx/${txResult.txSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 block text-xs text-primary-400 hover:underline"
+            >
+              View transaction on Solana Explorer
+            </a>
+          )}
+          {txResult.marketPubkey && (
+            <p className="mt-1 text-xs text-gray-500">
+              Market: {txResult.marketPubkey.slice(0, 8)}...{txResult.marketPubkey.slice(-8)}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Submit */}
       <button
         type="submit"
-        disabled={!isValid || loading}
+        disabled={!isValid || isSubmitting}
         className="btn-primary w-full py-3.5"
       >
-        {loading ? (
+        {isSubmitting ? (
           <span className="flex items-center justify-center gap-2">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-            Creating...
+            Sending transaction...
           </span>
         ) : (
           "Create Market"

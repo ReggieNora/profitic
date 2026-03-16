@@ -2,9 +2,15 @@
 
 import { useCallback, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountInstruction,
+} from "@solana/spl-token";
 import * as anchor from "@coral-xyz/anchor";
 import { useProgram } from "./useProgram";
+import { PROGRAM_ID } from "@/lib/constants";
 import { solToLamports } from "@/lib/bondingCurve";
 
 export interface TradeResult {
@@ -14,22 +20,22 @@ export interface TradeResult {
 }
 
 /**
- * Hook that sends real on-chain buyShares / sellShares transactions
+ * Hook that sends real on-chain buyTokens / sellTokens transactions
  * against the Profitic program on Solana devnet.
  */
 export function useTrade() {
   const { program, provider } = useProgram();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey } = useWallet();
   const { connection } = useConnection();
   const [loading, setLoading] = useState(false);
   const [lastTx, setLastTx] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Buy shares on an on-chain market.
+   * Buy outcome tokens on an on-chain market.
    * @param marketPubkey - The public key string of the on-chain market account
    * @param outcome - "yes" or "no"
-   * @param amountSol - Amount in SOL to spend
+   * @param amountSol - Amount in SOL to spend (used as token amount parameter)
    * @param slippagePct - Slippage tolerance (default 5%)
    */
   const buyShares = useCallback(
@@ -53,32 +59,44 @@ export function useTrade() {
       try {
         marketKey = new PublicKey(marketPubkey);
       } catch {
-        const msg = "Invalid market address. This is a demo market — create a real market on-chain to trade.";
+        const msg =
+          "Invalid market address. This is a demo market — create a real market on-chain to trade.";
         setError(msg);
         return { success: false, error: msg };
       }
 
       // Check if this is a demo/fake market key
       if (marketPubkey.startsWith("Demo")) {
-        const msg = "This is a demo market. Create a real on-chain market to place bets with real SOL.";
+        const msg =
+          "This is a demo market. Create a real on-chain market to place bets with real SOL.";
         setError(msg);
         return { success: false, error: msg };
       }
 
       setLoading(true);
       try {
+        const outcomeIndex: number = outcome === "yes" ? 0 : 1;
         const amountLamports = solToLamports(amountSol);
         // Allow slippage on max cost
         const maxCost = new anchor.BN(
           Math.ceil(amountLamports * (1 + slippagePct / 100))
         );
 
-        const outcomeEnum = outcome === "yes" ? { yes: {} } : { no: {} };
+        // Fetch market to get mint addresses
+        const marketAccount = await (program.account as any).market.fetch(marketKey);
+        const market = marketAccount as any;
+        const outcomeMint: PublicKey =
+          outcomeIndex === 0 ? market.yesMint : market.noMint;
 
         // Derive PDAs
-        const [marketVault] = PublicKey.findProgramAddressSync(
+        const [platformPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("platform")],
+          PROGRAM_ID
+        );
+
+        const [vault] = PublicKey.findProgramAddressSync(
           [Buffer.from("vault"), marketKey.toBuffer()],
-          program.programId
+          PROGRAM_ID
         );
 
         const [userPosition] = PublicKey.findProgramAddressSync(
@@ -87,18 +105,50 @@ export function useTrade() {
             marketKey.toBuffer(),
             publicKey.toBuffer(),
           ],
-          program.programId
+          PROGRAM_ID
         );
 
+        // Get or create user's ATA for the outcome token
+        const userTokenAccount = getAssociatedTokenAddressSync(
+          outcomeMint,
+          publicKey
+        );
+
+        // Check if ATA exists, create if needed
+        const ataInfo = await connection.getAccountInfo(userTokenAccount);
+        const preInstructions: anchor.web3.TransactionInstruction[] = [];
+        if (!ataInfo) {
+          preInstructions.push(
+            createAssociatedTokenAccountInstruction(
+              publicKey,
+              userTokenAccount,
+              publicKey,
+              outcomeMint
+            )
+          );
+        }
+
+        // Fetch treasury from platform
+        const platformAccount = await (program.account as any).platform.fetch(
+          platformPda
+        );
+        const treasury = (platformAccount as any).treasury as PublicKey;
+
         const tx = await program.methods
-          .buyShares(outcomeEnum, new anchor.BN(amountLamports), maxCost)
+          .buyTokens(outcomeIndex, new anchor.BN(amountLamports), maxCost)
           .accounts({
+            platform: platformPda,
             market: marketKey,
-            buyer: publicKey,
-            marketVault,
+            outcomeMint,
+            userTokenAccount,
+            vault,
+            treasury,
             userPosition,
+            buyer: publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
           })
+          .preInstructions(preInstructions)
           .rpc();
 
         setLastTx(tx);
@@ -107,17 +157,17 @@ export function useTrade() {
       } catch (err: unknown) {
         const msg =
           err instanceof Error ? err.message : "Transaction failed";
-        console.error("Buy shares failed:", err);
+        console.error("Buy tokens failed:", err);
         setError(msg);
         setLoading(false);
         return { success: false, error: msg };
       }
     },
-    [program, provider, publicKey]
+    [program, provider, publicKey, connection]
   );
 
   /**
-   * Sell shares on an on-chain market.
+   * Sell outcome tokens on an on-chain market.
    */
   const sellShares = useCallback(
     async (
@@ -145,41 +195,60 @@ export function useTrade() {
       }
 
       if (marketPubkey.startsWith("Demo")) {
-        const msg = "This is a demo market. Create a real on-chain market to trade.";
+        const msg =
+          "This is a demo market. Create a real on-chain market to trade.";
         setError(msg);
         return { success: false, error: msg };
       }
 
       setLoading(true);
       try {
+        const outcomeIndex: number = outcome === "yes" ? 0 : 1;
         const amountLamports = solToLamports(amountSol);
         const minReturn = new anchor.BN(
           Math.floor(amountLamports * (1 - slippagePct / 100))
         );
 
-        const outcomeEnum = outcome === "yes" ? { yes: {} } : { no: {} };
+        // Fetch market to get mint addresses
+        const marketAccount = await (program.account as any).market.fetch(marketKey);
+        const market = marketAccount as any;
+        const outcomeMint: PublicKey =
+          outcomeIndex === 0 ? market.yesMint : market.noMint;
 
-        const [marketVault] = PublicKey.findProgramAddressSync(
+        // Derive PDAs
+        const [platformPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("platform")],
+          PROGRAM_ID
+        );
+
+        const [vault] = PublicKey.findProgramAddressSync(
           [Buffer.from("vault"), marketKey.toBuffer()],
-          program.programId
+          PROGRAM_ID
         );
 
-        const [userPosition] = PublicKey.findProgramAddressSync(
-          [
-            Buffer.from("position"),
-            marketKey.toBuffer(),
-            publicKey.toBuffer(),
-          ],
-          program.programId
+        // Get user's ATA for the outcome token
+        const userTokenAccount = getAssociatedTokenAddressSync(
+          outcomeMint,
+          publicKey
         );
+
+        // Fetch treasury from platform
+        const platformAccount = await (program.account as any).platform.fetch(
+          platformPda
+        );
+        const treasury = (platformAccount as any).treasury as PublicKey;
 
         const tx = await program.methods
-          .sellShares(outcomeEnum, new anchor.BN(amountLamports), minReturn)
+          .sellTokens(outcomeIndex, new anchor.BN(amountLamports), minReturn)
           .accounts({
+            platform: platformPda,
             market: marketKey,
+            outcomeMint,
+            userTokenAccount,
+            vault,
+            treasury,
             seller: publicKey,
-            marketVault,
-            userPosition,
+            tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
           })
           .rpc();
@@ -190,13 +259,13 @@ export function useTrade() {
       } catch (err: unknown) {
         const msg =
           err instanceof Error ? err.message : "Transaction failed";
-        console.error("Sell shares failed:", err);
+        console.error("Sell tokens failed:", err);
         setError(msg);
         setLoading(false);
         return { success: false, error: msg };
       }
     },
-    [program, provider, publicKey]
+    [program, provider, publicKey, connection]
   );
 
   const clearError = useCallback(() => setError(null), []);
