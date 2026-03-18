@@ -207,9 +207,6 @@ export function formatInterval(seconds: number): string {
 const assetPriceCache: Record<string, { price: number; ts: number }> = {};
 const PRICE_CACHE_TTL = 10_000; // keep client prices fresh
 
-// Track failed Jupiter fetches to avoid retrying every tick
-let jupiterFailedAt = 0;
-const JUPITER_FAIL_BACKOFF = 60_000; // 60s backoff on Jupiter failures
 
 /**
  * Fetch historical price chart via server-side proxy (/api/chart) to avoid
@@ -347,33 +344,12 @@ export async function fetchPriceChart(
 }
 
 /**
- * Fetch price via Jupiter Price API for any Solana token.
- * Uses symbol or mint address.
+ * Fetch price for a Solana token via the hybrid /api/prices endpoint.
+ * Uses CoinGecko ID (Pyth → CoinCap → CoinGecko cascade).
  */
 export async function fetchJupiterPrice(symbolOrMint: string): Promise<number> {
-  const cacheKey = `jup:${symbolOrMint}`;
-  const cached = assetPriceCache[cacheKey];
-  if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
-    return cached.price;
-  }
-
-  try {
-    const res = await fetch(
-      `/api/jupiter-price?ids=${encodeURIComponent(symbolOrMint)}`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      const price = data?.[symbolOrMint];
-      if (typeof price === "number" && price > 0) {
-        assetPriceCache[cacheKey] = { price, ts: Date.now() };
-        return price;
-      }
-    }
-  } catch {
-    // use cache if available
-  }
-  return cached?.price || 0;
+  // Route through /api/prices (Pyth → CoinCap → CoinGecko) instead of Jupiter
+  return fetchAssetPrice(symbolOrMint.toLowerCase());
 }
 
 /**
@@ -408,75 +384,58 @@ export async function fetchAssetPrice(coingeckoId: string): Promise<number> {
 
 /**
  * Fetch prices for multiple assets in a single batched request.
- * Splits requests by source: CoinGecko IDs go to /api/prices (hybrid),
- * Jupiter symbols go to /api/jupiter-price.
+ * All assets go through /api/prices (Pyth → CoinCap → CoinGecko).
+ * The jupiterSymbols parameter is accepted for backward compatibility
+ * but those symbols are now also routed through /api/prices by CoinGecko ID.
  */
 export async function fetchAssetPrices(
   coingeckoIds: string[],
   jupiterSymbols: string[] = []
 ): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
-  const toFetchCG: string[] = [];
-  const toFetchJup: string[] = [];
+  const toFetch: string[] = [];
 
-  for (const id of coingeckoIds) {
+  // Combine all IDs — route everything through /api/prices
+  const allIds = [...coingeckoIds];
+  // Jupiter symbols are now fetched by their lowercase name via /api/prices
+  for (const sym of jupiterSymbols) {
+    allIds.push(sym.toLowerCase());
+  }
+
+  for (const id of allIds) {
     const cached = assetPriceCache[id];
     if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
       result[id] = cached.price;
     } else {
-      toFetchCG.push(id);
+      toFetch.push(id);
     }
   }
 
+  if (toFetch.length > 0) {
+    try {
+      const res = await fetch(
+        `/api/prices?ids=${encodeURIComponent(toFetch.join(","))}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        for (const [id, price] of Object.entries(data as Record<string, number>)) {
+          if (typeof price === "number" && price > 0) {
+            assetPriceCache[id] = { price, ts: Date.now() };
+            result[id] = price;
+          }
+        }
+      }
+    } catch {
+      // use cached values
+    }
+  }
+
+  // Map Jupiter symbol results back so callers can find them by symbol
   for (const sym of jupiterSymbols) {
-    const cacheKey = `jup:${sym}`;
-    const cached = assetPriceCache[cacheKey];
-    if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
-      result[sym] = cached.price;
-    } else {
-      toFetchJup.push(sym);
-    }
-  }
-
-  // Skip Jupiter if we're in backoff period
-  const skipJupiter = toFetchJup.length > 0 && jupiterFailedAt && Date.now() - jupiterFailedAt < JUPITER_FAIL_BACKOFF;
-
-  // Fetch both in parallel
-  const [cgResult, jupResult] = await Promise.all([
-    toFetchCG.length > 0
-      ? fetch(`/api/prices?ids=${encodeURIComponent(toFetchCG.join(","))}`, {
-          signal: AbortSignal.timeout(8000),
-        })
-          .then((r) => (r.ok ? r.json() : {}))
-          .catch(() => ({}))
-      : Promise.resolve({}),
-    toFetchJup.length > 0 && !skipJupiter
-      ? fetch(`/api/jupiter-price?ids=${encodeURIComponent(toFetchJup.join(","))}`, {
-          signal: AbortSignal.timeout(8000),
-        })
-          .then((r) => {
-            if (r.ok) {
-              jupiterFailedAt = 0;
-              return r.json();
-            }
-            jupiterFailedAt = Date.now();
-            return {};
-          })
-          .catch(() => { jupiterFailedAt = Date.now(); return {}; })
-      : Promise.resolve({}),
-  ]);
-
-  for (const [id, price] of Object.entries(cgResult as Record<string, number>)) {
-    if (typeof price === "number" && price > 0) {
-      assetPriceCache[id] = { price, ts: Date.now() };
-      result[id] = price;
-    }
-  }
-
-  for (const [sym, price] of Object.entries(jupResult as Record<string, number>)) {
-    if (typeof price === "number" && price > 0) {
-      assetPriceCache[`jup:${sym}`] = { price, ts: Date.now() };
-      result[sym] = price;
+    const lowerKey = sym.toLowerCase();
+    if (result[lowerKey] && !result[sym]) {
+      result[sym] = result[lowerKey];
     }
   }
 

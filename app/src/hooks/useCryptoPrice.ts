@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { CryptoAsset } from "@/types";
 
-type PriceSource = "pyth" | "coincap" | "coingecko" | "jupiter" | "fallback";
+type PriceSource = "pyth" | "coincap" | "coingecko" | "fallback";
 
 interface CryptoPriceResult {
   price: number;
@@ -16,9 +16,6 @@ interface CryptoPriceResult {
 const priceCache: Record<string, { price: number; timestamp: number; source: PriceSource }> = {};
 const CACHE_TTL = 15_000; // 15 seconds — Pyth is fast, keep prices fresh
 
-// Core assets use the hybrid /api/prices route (Pyth → CoinCap → CoinGecko)
-const CORE_ASSETS = new Set<string>(["BTC", "ETH", "SOL"]);
-
 const COINGECKO_IDS: Record<string, string> = {
   BTC: "bitcoin",
   ETH: "ethereum",
@@ -26,9 +23,8 @@ const COINGECKO_IDS: Record<string, string> = {
 };
 
 /**
- * Hook to fetch live crypto prices via hybrid server-side proxies.
- * Core assets: Pyth → CoinCap → CoinGecko (via /api/prices)
- * Meme tokens: Jupiter (via /api/jupiter-price)
+ * Hook to fetch live crypto prices via hybrid server-side proxy.
+ * All assets: Pyth → CoinCap → CoinGecko (via /api/prices)
  */
 export function useCryptoPrice(asset: CryptoAsset | string): CryptoPriceResult {
   const [price, setPrice] = useState<number>(0);
@@ -49,44 +45,17 @@ export function useCryptoPrice(asset: CryptoAsset | string): CryptoPriceResult {
       let fetchedPrice: number | undefined;
       let fetchedSource: PriceSource = "fallback";
 
-      if (CORE_ASSETS.has(asset.toUpperCase())) {
-        // Core asset: use hybrid /api/prices (Pyth → CoinCap → CoinGecko)
-        const id = COINGECKO_IDS[asset.toUpperCase()] || asset.toLowerCase();
-        const res = await fetch(
-          `/api/prices?ids=${encodeURIComponent(id)}`,
-          { signal: AbortSignal.timeout(8000) }
-        );
+      // All assets: use hybrid /api/prices (Pyth → CoinCap → CoinGecko)
+      const id = COINGECKO_IDS[asset.toUpperCase()] || asset.toLowerCase();
+      const res = await fetch(
+        `/api/prices?ids=${encodeURIComponent(id)}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
 
-        if (!res.ok) throw new Error(`Price proxy returned ${res.status}`);
-        const data = await res.json();
-        fetchedPrice = data?.[id];
-        fetchedSource = "pyth"; // Pyth is primary; the proxy cascades internally
-      } else {
-        // Non-core (meme/pump.fun): try Jupiter first
-        const res = await fetch(
-          `/api/jupiter-price?ids=${encodeURIComponent(asset.toUpperCase())}`,
-          { signal: AbortSignal.timeout(8000) }
-        );
-
-        if (res.ok) {
-          const data = await res.json();
-          fetchedPrice = data?.[asset.toUpperCase()];
-          fetchedSource = "jupiter";
-        }
-
-        // Fallback to CoinGecko if Jupiter didn't have it
-        if (!fetchedPrice || fetchedPrice <= 0) {
-          const cgRes = await fetch(
-            `/api/prices?ids=${encodeURIComponent(asset.toLowerCase())}`,
-            { signal: AbortSignal.timeout(8000) }
-          );
-          if (cgRes.ok) {
-            const cgData = await cgRes.json();
-            fetchedPrice = cgData?.[asset.toLowerCase()];
-            fetchedSource = "coingecko";
-          }
-        }
-      }
+      if (!res.ok) throw new Error(`Price proxy returned ${res.status}`);
+      const data = await res.json();
+      fetchedPrice = data?.[id];
+      fetchedSource = "pyth"; // Pyth is primary; the proxy cascades internally
 
       if (typeof fetchedPrice === "number" && fetchedPrice > 0) {
         priceCache[asset] = { price: fetchedPrice, timestamp: Date.now(), source: fetchedSource };
@@ -127,32 +96,16 @@ export async function fetchCryptoPrice(asset: CryptoAsset | string): Promise<num
   }
 
   try {
-    if (CORE_ASSETS.has(asset.toUpperCase())) {
-      const id = COINGECKO_IDS[asset.toUpperCase()] || asset.toLowerCase();
-      const res = await fetch(
-        `/api/prices?ids=${encodeURIComponent(id)}`,
-        { signal: AbortSignal.timeout(8000) }
-      );
-      const data = await res.json();
-      const price = data?.[id];
-      if (typeof price === "number" && price > 0) {
-        priceCache[asset] = { price, timestamp: Date.now(), source: "pyth" };
-        return price;
-      }
-    } else {
-      // Jupiter for non-core
-      const res = await fetch(
-        `/api/jupiter-price?ids=${encodeURIComponent(asset.toUpperCase())}`,
-        { signal: AbortSignal.timeout(8000) }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const price = data?.[asset.toUpperCase()];
-        if (typeof price === "number" && price > 0) {
-          priceCache[asset] = { price, timestamp: Date.now(), source: "jupiter" };
-          return price;
-        }
-      }
+    const id = COINGECKO_IDS[asset.toUpperCase()] || asset.toLowerCase();
+    const res = await fetch(
+      `/api/prices?ids=${encodeURIComponent(id)}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    const data = await res.json();
+    const price = data?.[id];
+    if (typeof price === "number" && price > 0) {
+      priceCache[asset] = { price, timestamp: Date.now(), source: "pyth" };
+      return price;
     }
   } catch {
     // fallback

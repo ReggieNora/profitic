@@ -2,8 +2,7 @@
  * Profitic Backend — Hybrid Price Oracle Service
  *
  * Fetches real-time crypto prices using a cascading approach:
- *   Core assets (BTC, ETH, SOL): Pyth Network → CoinCap → CoinGecko
- *   Meme/pump.fun tokens:        Jupiter Price API → CoinGecko
+ *   All assets: Pyth Network → CoinCap → CoinGecko
  *
  * Resolution logic:
  *   - Up/Down: compares start_price to current price at expiry
@@ -47,7 +46,7 @@ export interface PriceResult {
   price: number; // USD
   confidence: number; // USD confidence interval
   timestamp: number; // Unix seconds
-  source: "pyth" | "coincap" | "coingecko" | "jupiter" | "simulated";
+  source: "pyth" | "coincap" | "coingecko" | "simulated";
 }
 
 // ---------------------------------------------------------------------------
@@ -171,72 +170,26 @@ export async function fetchCoinGeckoPrice(asset: string): Promise<PriceResult | 
 }
 
 // ---------------------------------------------------------------------------
-// Jupiter Price API (for any Solana token, including pump.fun)
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch the latest price from Jupiter Price API.
- * Works with token symbols (BONK, WIF) or mint addresses.
- */
-export async function fetchJupiterPrice(symbolOrMint: string): Promise<PriceResult | null> {
-  try {
-    const url = `https://price.jup.ag/v6/price?ids=${encodeURIComponent(symbolOrMint)}&vsToken=USDC`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-
-    if (!res.ok) {
-      console.warn(`[oracle] Jupiter API returned ${res.status} for ${symbolOrMint}`);
-      return null;
-    }
-
-    const data = await res.json() as { data?: Record<string, { price?: number }> };
-    const entry = data?.data?.[symbolOrMint];
-    if (!entry || typeof entry.price !== "number" || entry.price <= 0) return null;
-
-    return {
-      asset: symbolOrMint.toUpperCase(),
-      price: entry.price,
-      confidence: 0,
-      timestamp: Math.floor(Date.now() / 1000),
-      source: "jupiter",
-    };
-  } catch (err) {
-    console.warn(`[oracle] Jupiter fetch failed for ${symbolOrMint}:`, err);
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Combined Price Fetch (hybrid cascade)
 // ---------------------------------------------------------------------------
 
 /**
  * Get the current price of a crypto asset.
  *
- * Core assets (BTC, ETH, SOL): Pyth → CoinCap → CoinGecko → Simulated
- * Other tokens:                 Jupiter → CoinGecko → Simulated
+ * All assets: Pyth → CoinCap → CoinGecko → Simulated
  */
 export async function getPrice(asset: string): Promise<PriceResult> {
   const upper = asset.toUpperCase();
 
-  if (CORE_ASSETS.has(upper)) {
-    // Core asset cascade: Pyth → CoinCap → CoinGecko
-    const pythPrice = await fetchPythPrice(upper);
-    if (pythPrice) return pythPrice;
+  // Pyth → CoinCap → CoinGecko cascade for all assets
+  const pythPrice = await fetchPythPrice(upper);
+  if (pythPrice) return pythPrice;
 
-    const coincapPrice = await fetchCoinCapPrice(upper);
-    if (coincapPrice) return coincapPrice;
+  const coincapPrice = await fetchCoinCapPrice(upper);
+  if (coincapPrice) return coincapPrice;
 
-    const cgPrice = await fetchCoinGeckoPrice(upper);
-    if (cgPrice) return cgPrice;
-  } else {
-    // Non-core (meme/pump.fun): Jupiter → CoinGecko
-    const jupPrice = await fetchJupiterPrice(asset);
-    if (jupPrice) return jupPrice;
-
-    // Try CoinGecko as fallback (works if the token has a CoinGecko listing)
-    const cgPrice = await fetchCoinGeckoPrice(asset);
-    if (cgPrice) return cgPrice;
-  }
+  const cgPrice = await fetchCoinGeckoPrice(upper);
+  if (cgPrice) return cgPrice;
 
   // Last resort: simulated prices (for development/testing)
   console.warn(`[oracle] All price sources failed for ${asset}, using simulated price`);

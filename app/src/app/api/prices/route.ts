@@ -3,14 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 /**
  * Hybrid price API — cascading price sources for reliability.
  *
- * Core assets (BTC, ETH, SOL): Pyth Network → CoinCap → CoinGecko
- * Meme/pump.fun tokens:        Jupiter Price API → CoinGecko
+ * All assets: Pyth Network → CoinCap → CoinGecko
  *
  * GET /api/prices?ids=bitcoin,ethereum,solana
- * GET /api/prices?ids=bitcoin,ethereum&symbols=BONK,WIF  (Jupiter symbols)
- * GET /api/prices?ids=bitcoin&mints=So111...              (Jupiter mints)
  *
- * Returns: { bitcoin: 84750.12, ethereum: 2185.50, BONK: 0.000015, ... }
+ * Returns: { bitcoin: 84750.12, ethereum: 2185.50, ... }
  */
 
 // ── Mapping between CoinGecko IDs, CoinCap IDs, and asset symbols ──
@@ -114,51 +111,25 @@ async function fetchCoinGeckoPrices(ids: string[]): Promise<Record<string, numbe
   }
 }
 
-async function fetchJupiterPrices(symbols: string[]): Promise<Record<string, number>> {
-  if (symbols.length === 0) return {};
-  try {
-    const url = `https://price.jup.ag/v6/price?ids=${encodeURIComponent(symbols.join(","))}&vsToken=USDC`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return {};
-
-    const data = await res.json();
-    const result: Record<string, number> = {};
-    if (data?.data) {
-      for (const [id, info] of Object.entries(data.data)) {
-        const p = (info as { price?: number })?.price;
-        if (typeof p === "number" && p > 0) result[id] = p;
-      }
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
 // ── Main handler ──
 
 export async function GET(req: NextRequest) {
   const idsParam = req.nextUrl.searchParams.get("ids") || "";
-  const symbolsParam = req.nextUrl.searchParams.get("symbols") || "";
-  const mintsParam = req.nextUrl.searchParams.get("mints") || "";
 
-  if (!idsParam && !symbolsParam && !mintsParam) {
-    return NextResponse.json({ error: "Missing ids, symbols, or mints" }, { status: 400 });
+  if (!idsParam) {
+    return NextResponse.json({ error: "Missing ids" }, { status: 400 });
   }
 
-  const coingeckoIds = idsParam ? idsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  const jupiterSymbols = symbolsParam ? symbolsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  const jupiterMints = mintsParam ? mintsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const coingeckoIds = idsParam.split(",").map((s) => s.trim()).filter(Boolean);
 
   // Check if ALL requested IDs have fresh cache
-  const allRequestedIds = [...coingeckoIds, ...jupiterSymbols, ...jupiterMints];
   const now = Date.now();
-  const allCached = allRequestedIds.every(
+  const allCached = coingeckoIds.every(
     (id) => priceCache[id] && now - priceCache[id].ts < CACHE_TTL
   );
-  if (allCached && allRequestedIds.length > 0) {
+  if (allCached && coingeckoIds.length > 0) {
     const cached: Record<string, number> = {};
-    for (const id of allRequestedIds) cached[id] = priceCache[id].price;
+    for (const id of coingeckoIds) cached[id] = priceCache[id].price;
     return NextResponse.json(cached);
   }
 
@@ -209,18 +180,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 2. Non-core CoinGecko IDs: Jupiter (by symbol) → CoinGecko
+  // 2. Non-core IDs: CoinGecko
   if (nonCoreIds.length > 0) {
-    // Try CoinGecko first for non-core (they have coingeckoIds)
     const cgPrices = await fetchCoinGeckoPrices(nonCoreIds);
     Object.assign(result, cgPrices);
-  }
-
-  // 3. Jupiter symbols (for pump.fun / meme tokens without CoinGecko IDs)
-  const allJupiterIds = [...jupiterSymbols, ...jupiterMints];
-  if (allJupiterIds.length > 0) {
-    const jupPrices = await fetchJupiterPrices(allJupiterIds);
-    Object.assign(result, jupPrices);
   }
 
   // Update per-asset cache
