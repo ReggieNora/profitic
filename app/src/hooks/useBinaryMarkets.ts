@@ -13,6 +13,14 @@ import {
 } from "@/lib/tokenDiscovery";
 import { useBinaryProgram, deriveRoundPda, deriveBetPda, deriveConfigPda } from "./useBinaryProgram";
 
+// Pyth devnet price feed account addresses (Solana devnet)
+// See: https://pyth.network/developers/price-feed-ids
+const PYTH_DEVNET_FEEDS: Record<string, string> = {
+  BTC: "HovQMDrbAgAYPCmHVSrezcSmkMtXSSUsLDFANExrZh2J",
+  ETH: "EdVCmQ9FSPcVe5YySXDPCRmc8aDQLKJ9GvYRNiqueLuZ",
+  SOL: "J83w4HKfqxwcq3BEMMkPFSppX3gqekLyLJBexebFVkix",
+};
+
 // ── Types ──
 
 export type MarketPhase = "betting" | "locked" | "resolving" | "complete";
@@ -170,6 +178,12 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const wallet = useWallet();
   const { connection } = useConnection();
 
+  // Refs so the tick loop can access current program/wallet without stale closures
+  const programRef = useRef(program);
+  programRef.current = program;
+  const walletRef = useRef(wallet);
+  walletRef.current = wallet;
+
   // Initialize demo balance from wallet's actual SOL balance
   useEffect(() => {
     if (!wallet.publicKey || balanceInitialized.current) return;
@@ -260,6 +274,82 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     fetchRealData();
   }, []);
 
+  // Helper: process payouts + history after a market resolves (used by both on-chain and simulation paths)
+  const processResolutionPayouts = (original: BinaryMarket, resolved: BinaryMarket) => {
+    const outcome = resolved.outcome!;
+    const finalPrice = resolved.finalPrice!;
+    const fee = resolved.feeCollected;
+
+    // Process user bet payouts
+    const currentUserBets = userBetsRef.current;
+    const userBet = currentUserBets.find((b) => b.marketId === original.id);
+    if (userBet) {
+      const betSol = userBet.amount / 1_000_000_000;
+      if (outcome === "refund") {
+        setDemoBalance((prev) => (prev ?? 0) + betSol);
+        setLastPayout({ amount: betSol, won: false });
+      } else if (userBet.side === outcome) {
+        const winningPool = outcome === "up" ? original.upPool : original.downPool;
+        const payoutLamports = winningPool > 0
+          ? ((original.totalPool * 0.98) * userBet.amount) / winningPool
+          : 0;
+        const payoutSol = payoutLamports / 1_000_000_000;
+        setDemoBalance((prev) => (prev ?? 0) + payoutSol);
+        setLastPayout({ amount: payoutSol, won: true });
+      } else {
+        setLastPayout({ amount: betSol, won: false });
+      }
+      setUserBets((prev) => prev.filter((b) => b.marketId !== original.id));
+    }
+
+    // Save to round history
+    const historyKey = `${original.asset.symbol}-${original.interval}`;
+    const completedRound: CompletedRound = {
+      id: original.id,
+      asset: original.asset,
+      interval: original.interval,
+      intervalLabel: original.intervalLabel,
+      roundNumber: original.roundNumber,
+      entryPrice: original.entryPrice,
+      finalPrice,
+      outcome,
+      upPool: original.upPool,
+      downPool: original.downPool,
+      totalPool: original.totalPool,
+      feeCollected: fee,
+      startTime: original.startTime,
+      endTime: original.endTime,
+      totalBets: original.bets.length,
+    };
+    setRoundHistory((prev) => {
+      const existing = prev[historyKey] || [];
+      return { ...prev, [historyKey]: [...existing, completedRound].slice(-50) };
+    });
+
+    // Schedule new round
+    const key = `${original.asset.symbol}-${original.interval}`;
+    const rn = (roundCounters.current[key] || 1) + 1;
+    roundCounters.current[key] = rn;
+
+    setTimeout(() => {
+      setMarkets((p) => {
+        const idx = p.findIndex((x) => x.id === original.id);
+        if (idx === -1) return p;
+        const price = livePricesRef.current[original.asset.symbol] || original.entryPrice;
+        const newMarket = createMarket(
+          original.asset,
+          original.interval,
+          rn,
+          price,
+          Math.floor(Date.now() / 1000)
+        );
+        const next = [...p];
+        next[idx] = newMarket;
+        return next;
+      });
+    }, 3000);
+  };
+
   // Tick loop: update phases, simulate bets, resolve markets, start new rounds
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -280,6 +370,58 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       }
       setLivePrices(newPrices);
 
+      // Pre-scan: attempt on-chain resolution for rounds that have ended
+      // This must happen outside setMarkets because it's async
+      const onChainResolutions: Record<string, BinaryMarket> = {};
+      const currentProgram = programRef.current;
+      const currentWallet = walletRef.current;
+      // Use a snapshot of current markets (read via ref to avoid stale closure)
+      const marketsSnapshot = markets;
+      for (const m of marketsSnapshot) {
+        if ((m.phase === "betting" || m.phase === "locked") && now >= m.endTime) {
+          if (currentProgram && currentWallet.publicKey) {
+            const pythFeedKey = PYTH_DEVNET_FEEDS[m.asset.symbol];
+            if (pythFeedKey) {
+              try {
+                const [roundPda] = deriveRoundPda(m.asset.symbol, m.roundNumber);
+                const [configPda] = deriveConfigPda();
+                await currentProgram.methods
+                  .resolveRound()
+                  .accounts({
+                    round: roundPda,
+                    config: configPda,
+                    pythFeed: new PublicKey(pythFeedKey),
+                    cranker: currentWallet.publicKey,
+                  })
+                  .rpc();
+                console.log(`Round ${m.id} resolved on-chain`);
+
+                // Fetch resolved data from chain
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const roundAccount = await (currentProgram.account as any)["binaryRoundAccount"].fetch(roundPda);
+                const endPriceRaw = (roundAccount.endPrice as { toNumber?: () => number });
+                const endPrice = typeof endPriceRaw?.toNumber === "function" ? endPriceRaw.toNumber() : Number(endPriceRaw);
+                const outcomeRaw = roundAccount.outcome;
+                const onChainOutcome: "up" | "down" | "refund" =
+                  outcomeRaw?.up ? "up" : outcomeRaw?.down ? "down" : "refund";
+                const feeRaw = (roundAccount.feeCollected as { toNumber?: () => number });
+                const feeCollected = typeof feeRaw?.toNumber === "function" ? feeRaw.toNumber() : Number(feeRaw);
+
+                onChainResolutions[m.id] = {
+                  ...m,
+                  phase: "complete",
+                  finalPrice: endPrice > 0 ? endPrice / 1e8 : (newPrices[m.asset.symbol] || m.entryPrice),
+                  outcome: onChainOutcome,
+                  feeCollected,
+                };
+              } catch (err) {
+                console.warn("On-chain resolve unavailable, using simulation:", err instanceof Error ? err.message : err);
+              }
+            }
+          }
+        }
+      }
+
       setMarkets((prev) => {
         const updated = [...prev];
         let changed = false;
@@ -296,9 +438,16 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           }
 
           if ((m.phase === "betting" || m.phase === "locked") && now >= m.endTime) {
-            // Resolve: use live price with realistic micro-movement
-            // The cached API price may not have changed within a short round,
-            // so we add small random drift to simulate real market movement.
+            // Use on-chain result if available, else simulate
+            if (onChainResolutions[m.id]) {
+              const resolved = onChainResolutions[m.id];
+              updated[i] = resolved;
+              changed = true;
+              processResolutionPayouts(m, resolved);
+              continue;
+            }
+
+            // Fallback: simulate resolution with price drift
             const basePrice = newPrices[m.asset.symbol] || m.entryPrice;
             const volatility = m.asset.symbol === "BTC" ? 0.001 : m.asset.symbol === "ETH" ? 0.0015 : 0.003;
             const drift = basePrice * (Math.random() - 0.5) * 2 * volatility;
@@ -310,87 +459,17 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
 
             const fee = Math.round(m.totalPool * 0.02);
 
-            updated[i] = {
+            const resolvedMarket: BinaryMarket = {
               ...m,
               phase: "complete",
               finalPrice,
               outcome,
               feeCollected: fee,
             };
+            updated[i] = resolvedMarket;
             changed = true;
 
-            // Process user bet payouts for this resolved market
-            const currentUserBets = userBetsRef.current;
-            const userBet = currentUserBets.find((b) => b.marketId === m.id);
-            if (userBet) {
-              const betSol = userBet.amount / 1_000_000_000;
-              if (outcome === "refund") {
-                // Refund the bet
-                setDemoBalance((prev) => (prev ?? 0) + betSol);
-                setLastPayout({ amount: betSol, won: false });
-              } else if (userBet.side === outcome) {
-                // Winner: payout = (totalPool * 0.98) * (userBet / winningPool)
-                const winningPool = outcome === "up" ? m.upPool : m.downPool;
-                const payoutLamports = winningPool > 0
-                  ? ((m.totalPool * 0.98) * userBet.amount) / winningPool
-                  : 0;
-                const payoutSol = payoutLamports / 1_000_000_000;
-                setDemoBalance((prev) => (prev ?? 0) + payoutSol);
-                setLastPayout({ amount: payoutSol, won: true });
-              } else {
-                // Loser: bet already deducted, nothing to do
-                setLastPayout({ amount: betSol, won: false });
-              }
-              // Remove this bet from tracking
-              setUserBets((prev) => prev.filter((b) => b.marketId !== m.id));
-            }
-
-            // Save to round history
-            const historyKey = `${m.asset.symbol}-${m.interval}`;
-            const completedRound: CompletedRound = {
-              id: m.id,
-              asset: m.asset,
-              interval: m.interval,
-              intervalLabel: m.intervalLabel,
-              roundNumber: m.roundNumber,
-              entryPrice: m.entryPrice,
-              finalPrice,
-              outcome,
-              upPool: m.upPool,
-              downPool: m.downPool,
-              totalPool: m.totalPool,
-              feeCollected: fee,
-              startTime: m.startTime,
-              endTime: m.endTime,
-              totalBets: m.bets.length,
-            };
-            setRoundHistory((prev) => {
-              const existing = prev[historyKey] || [];
-              return { ...prev, [historyKey]: [...existing, completedRound].slice(-50) };
-            });
-
-            // Schedule new round
-            const key = `${m.asset.symbol}-${m.interval}`;
-            const rn = (roundCounters.current[key] || 1) + 1;
-            roundCounters.current[key] = rn;
-
-            setTimeout(() => {
-              setMarkets((p) => {
-                const idx = p.findIndex((x) => x.id === m.id);
-                if (idx === -1) return p;
-                const price = livePricesRef.current[m.asset.symbol] || m.entryPrice;
-                const newMarket = createMarket(
-                  m.asset,
-                  m.interval,
-                  rn,
-                  price,
-                  Math.floor(Date.now() / 1000)
-                );
-                const next = [...p];
-                next[idx] = newMarket;
-                return next;
-              });
-            }, 3000);
+            processResolutionPayouts(m, resolvedMarket);
             continue;
           }
 

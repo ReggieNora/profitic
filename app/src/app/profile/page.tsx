@@ -6,6 +6,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Position } from "@/types";
 import { formatSol, lamportsToSol } from "@/lib/bondingCurve";
+import { useBinaryMarkets } from "@/hooks/useBinaryMarkets";
 
 // Demo positions for development
 function getDemoPositions(): Position[] {
@@ -105,10 +106,12 @@ function shortenAddress(addr: string): string {
 
 export default function ProfilePage() {
   const { connected, publicKey } = useWallet();
+  const { claimWinnings, txPending: claimPending } = useBinaryMarkets();
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"predictions" | "active" | "settled">("predictions");
   const [isFollowing, setIsFollowing] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   useEffect(() => {
     if (connected) {
@@ -145,9 +148,19 @@ export default function ProfilePage() {
   const following = 34;
 
   const handleClaim = async (marketId: string) => {
-    alert(
-      `Claiming winnings for market ${marketId}.\n\nIn production, this sends a claimWinnings transaction.`
-    );
+    setClaimError(null);
+    try {
+      // betIndex 0 for the user's first bet on this market
+      await claimWinnings(marketId, 0);
+      // Mark position as claimed in local state
+      setPositions((prev) =>
+        prev.map((p) => (p.marketId === marketId ? { ...p, claimed: true, claimable: false } : p))
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setClaimError(msg);
+      console.error("Claim failed:", msg);
+    }
   };
 
   if (!connected) {
@@ -305,11 +318,19 @@ export default function ProfilePage() {
             </div>
             <button
               onClick={() => claimablePositions.forEach((p) => handleClaim(p.marketId))}
-              className="rounded-xl bg-gradient-primary px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary-500/20 transition-all active:scale-95"
+              disabled={claimPending}
+              className="rounded-xl bg-gradient-primary px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary-500/20 transition-all active:scale-95 disabled:opacity-50"
             >
-              Claim All
+              {claimPending ? "Claiming..." : "Claim All"}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Claim error */}
+      {claimError && (
+        <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">
+          {claimError}
         </div>
       )}
 
