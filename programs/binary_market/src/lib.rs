@@ -22,12 +22,18 @@
 //   close_round()             — reclaims rent after all claims
 
 use anchor_lang::prelude::*;
+use pyth_sdk_solana::load_price_feed_from_account_info;
 
 declare_id!("2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj");
 
 pub const ROUND_SEED: &[u8] = b"binary_round";
 pub const BET_SEED: &[u8] = b"binary_bet";
 pub const CONFIG_SEED: &[u8] = b"binary_config";
+
+/// Maximum staleness (seconds) for Pyth price at round creation.
+const PYTH_MAX_STALENESS_CREATE: u64 = 3600;
+/// Maximum staleness (seconds) for Pyth price at round resolution.
+const PYTH_MAX_STALENESS_RESOLVE: u64 = 3600;
 
 #[program]
 pub mod binary_market {
@@ -47,14 +53,14 @@ pub mod binary_market {
         Ok(())
     }
 
-    /// Create a new round for a given asset. Only callable by authority.
+    /// Create a new round for a given asset. Permissionless — anyone can create
+    /// and pay the rent. The Pyth feed is read on-chain for the start price.
     pub fn create_round(
         ctx: Context<CreateRound>,
         asset: String,         // "BTC", "ETH", "SOL"
         round_number: u64,
         duration: i64,         // seconds (e.g. 300)
         lock_buffer: i64,      // seconds before end to lock (e.g. 30)
-        pyth_feed: Pubkey,     // Pyth price feed account
     ) -> Result<()> {
         let clock = Clock::get()?;
         let round = &mut ctx.accounts.round;
@@ -67,20 +73,34 @@ pub mod binary_market {
         round.start_time = clock.unix_timestamp;
         round.end_time = clock.unix_timestamp + duration;
         round.lock_time = clock.unix_timestamp + duration - lock_buffer;
-        round.pyth_feed = pyth_feed;
+        round.pyth_feed = ctx.accounts.pyth_feed.key();
 
         // Read Pyth oracle for start price
-        // In production: use pyth_solana_receiver_sdk to read the price
-        round.start_price = 0; // Placeholder — set from Pyth in production
+        let price_feed = load_price_feed_from_account_info(&ctx.accounts.pyth_feed)
+            .map_err(|_| BinaryError::InvalidPythFeed)?;
+        let price = price_feed
+            .get_price_no_older_than(clock.unix_timestamp, PYTH_MAX_STALENESS_CREATE)
+            .ok_or(BinaryError::PythPriceTooOld)?;
+        require!(price.price > 0, BinaryError::PythPriceNegative);
+        round.start_price = price.price as u64;
+
         round.end_price = 0;
         round.up_pool = 0;
         round.down_pool = 0;
         round.total_bets = 0;
         round.outcome = RoundOutcome::Pending;
         round.fee_collected = 0;
+        round.bump = ctx.bumps.round;
 
         let config = &mut ctx.accounts.config;
         config.total_rounds += 1;
+
+        msg!(
+            "Round created: asset={}, round={}, start_price={}",
+            round.pyth_feed,
+            round.round_number,
+            round.start_price
+        );
 
         Ok(())
     }
@@ -160,17 +180,22 @@ pub mod binary_market {
         );
 
         // Read Pyth oracle for end price
-        // In production:
-        //   let price_feed = load_price_feed_from_account_info(&ctx.accounts.pyth_feed)?;
-        //   let price = price_feed.get_price_no_older_than(clock.unix_timestamp, 60)?;
-        //   round.end_price = price.price as u64;
-        round.end_price = 0; // Placeholder
+        let price_feed = load_price_feed_from_account_info(&ctx.accounts.pyth_feed)
+            .map_err(|_| BinaryError::InvalidPythFeed)?;
+        let price = price_feed
+            .get_price_no_older_than(clock.unix_timestamp, PYTH_MAX_STALENESS_RESOLVE)
+            .ok_or(BinaryError::PythPriceTooOld)?;
+        require!(price.price > 0, BinaryError::PythPriceNegative);
+        round.end_price = price.price as u64;
 
         // Determine outcome
-        round.outcome = if round.end_price >= round.start_price {
+        round.outcome = if round.end_price > round.start_price {
             RoundOutcome::Up
-        } else {
+        } else if round.end_price < round.start_price {
             RoundOutcome::Down
+        } else {
+            // Exact tie — default to Up (extremely rare with 8-decimal Pyth prices)
+            RoundOutcome::Up
         };
         round.phase = RoundPhase::Complete;
 
@@ -179,12 +204,18 @@ pub mod binary_market {
         let fee = (total_pool as u128 * config.fee_bps as u128 / 10_000) as u64;
         round.fee_collected = fee;
 
-        // Transfer fee to treasury (in production: via PDA signer)
+        msg!(
+            "Round resolved: end_price={}, outcome={:?}, fee={}",
+            round.end_price,
+            round.outcome,
+            fee
+        );
 
         Ok(())
     }
 
     /// User claims their winnings from a resolved round.
+    /// Transfers SOL from the round PDA escrow to the winning user.
     pub fn claim_winnings(ctx: Context<ClaimWinnings>) -> Result<()> {
         let round = &ctx.accounts.round;
         let bet = &mut ctx.accounts.bet;
@@ -214,7 +245,19 @@ pub mod binary_market {
             let payout = (pool_after_fee as u128 * bet.amount as u128
                 / winning_pool as u128) as u64;
 
-            // Transfer payout from round PDA to user (in production: via PDA signer)
+            // Transfer payout from round PDA escrow to user
+            let round_info = ctx.accounts.round.to_account_info();
+            let user_info = ctx.accounts.user.to_account_info();
+
+            // Ensure sufficient lamports (round holds rent + pool; fee stays behind)
+            let round_lamports = round_info.lamports();
+            let rent = Rent::get()?.minimum_balance(round_info.data_len());
+            let available = round_lamports.saturating_sub(rent);
+            require!(payout <= available, BinaryError::InsufficientFunds);
+
+            **round_info.try_borrow_mut_lamports()? -= payout;
+            **user_info.try_borrow_mut_lamports()? += payout;
+
             bet.claimed = true;
             msg!("Payout: {} lamports to {}", payout, bet.user);
         } else {
@@ -247,13 +290,14 @@ pub struct BinaryRoundAccount {
     pub end_time: i64,
     pub lock_time: i64,
     pub pyth_feed: Pubkey,
-    pub start_price: u64,       // from Pyth oracle at round start
-    pub end_price: u64,         // from Pyth oracle at round end
+    pub start_price: u64,       // from Pyth oracle at round start (raw, expo=-8)
+    pub end_price: u64,         // from Pyth oracle at round end (raw, expo=-8)
     pub up_pool: u64,           // total lamports bet UP
     pub down_pool: u64,         // total lamports bet DOWN
     pub total_bets: u32,
     pub outcome: RoundOutcome,
     pub fee_collected: u64,
+    pub bump: u8,               // PDA bump seed
 }
 
 #[account]
@@ -268,7 +312,7 @@ pub struct BinaryBetAccount {
 
 // ── Enums ──
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RoundPhase {
     Betting,
     Locked,
@@ -276,7 +320,7 @@ pub enum RoundPhase {
     Complete,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RoundOutcome {
     Pending,
     Up,
@@ -307,6 +351,14 @@ pub enum BinaryError {
     RoundNotResolved,
     #[msg("Winnings already claimed")]
     AlreadyClaimed,
+    #[msg("Invalid Pyth price feed account")]
+    InvalidPythFeed,
+    #[msg("Pyth price is too stale")]
+    PythPriceTooOld,
+    #[msg("Pyth price is negative or zero")]
+    PythPriceNegative,
+    #[msg("Insufficient funds in round escrow")]
+    InsufficientFunds,
 }
 
 // ── Contexts ──
@@ -333,16 +385,19 @@ pub struct InitializeConfig<'info> {
 pub struct CreateRound<'info> {
     #[account(
         init,
-        payer = authority,
-        space = 8 + 16 + 8 + 1 + 8 + 8 + 8 + 8 + 8 + 32 + 8 + 8 + 8 + 8 + 4 + 1 + 8,
+        payer = payer,
+        space = 8 + 16 + 8 + 1 + 8 + 8 + 8 + 8 + 8 + 32 + 8 + 8 + 8 + 8 + 4 + 1 + 8 + 1,
         seeds = [ROUND_SEED, asset.as_bytes(), &round_number.to_le_bytes()],
         bump,
     )]
     pub round: Account<'info, BinaryRoundAccount>,
     #[account(mut, seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, BinaryConfig>,
-    #[account(mut, constraint = authority.key() == config.authority)]
-    pub authority: Signer<'info>,
+    /// Permissionless: any signer can create a round and pay the rent.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: Pyth price feed account — validated by pyth-sdk-solana deserialization.
+    pub pyth_feed: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -369,7 +424,8 @@ pub struct ResolveRound<'info> {
     pub round: Account<'info, BinaryRoundAccount>,
     #[account(seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, BinaryConfig>,
-    /// CHECK: Pyth price feed account
+    /// CHECK: Pyth price feed account — must match the feed stored at round creation.
+    #[account(constraint = pyth_feed.key() == round.pyth_feed @ BinaryError::InvalidPythFeed)]
     pub pyth_feed: AccountInfo<'info>,
     pub cranker: Signer<'info>,
 }
@@ -378,7 +434,11 @@ pub struct ResolveRound<'info> {
 pub struct ClaimWinnings<'info> {
     #[account(mut)]
     pub round: Account<'info, BinaryRoundAccount>,
-    #[account(mut, constraint = bet.user == user.key())]
+    #[account(
+        mut,
+        constraint = bet.user == user.key(),
+        constraint = bet.round == round.key(),
+    )]
     pub bet: Account<'info, BinaryBetAccount>,
     #[account(mut)]
     pub user: Signer<'info>,

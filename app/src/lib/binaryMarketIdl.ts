@@ -20,15 +20,15 @@ export type BinaryMarketProgram = {
       accounts: [
         { name: "round"; isMut: true; isSigner: false },
         { name: "config"; isMut: true; isSigner: false },
-        { name: "authority"; isMut: true; isSigner: true },
+        { name: "payer"; isMut: true; isSigner: true },
+        { name: "pythFeed"; isMut: false; isSigner: false },
         { name: "systemProgram"; isMut: false; isSigner: false }
       ];
       args: [
         { name: "asset"; type: "string" },
         { name: "roundNumber"; type: "u64" },
         { name: "duration"; type: "i64" },
-        { name: "lockBuffer"; type: "i64" },
-        { name: "pythFeed"; type: "publicKey" }
+        { name: "lockBuffer"; type: "i64" }
       ];
     },
     {
@@ -99,7 +99,8 @@ export type BinaryMarketProgram = {
           { name: "downPool"; type: "u64" },
           { name: "totalBets"; type: "u32" },
           { name: "outcome"; type: { defined: "RoundOutcome" } },
-          { name: "feeCollected"; type: "u64" }
+          { name: "feeCollected"; type: "u64" },
+          { name: "bump"; type: "u8" }
         ];
       };
     },
@@ -160,7 +161,11 @@ export type BinaryMarketProgram = {
     { code: 6003; name: "RoundNotEnded"; msg: "Round has not ended yet" },
     { code: 6004; name: "AlreadyResolved"; msg: "Round already resolved" },
     { code: 6005; name: "RoundNotResolved"; msg: "Round not yet resolved" },
-    { code: 6006; name: "AlreadyClaimed"; msg: "Winnings already claimed" }
+    { code: 6006; name: "AlreadyClaimed"; msg: "Winnings already claimed" },
+    { code: 6007; name: "InvalidPythFeed"; msg: "Invalid Pyth price feed account" },
+    { code: 6008; name: "PythPriceTooOld"; msg: "Pyth price is too stale" },
+    { code: 6009; name: "PythPriceNegative"; msg: "Pyth price is negative or zero" },
+    { code: 6010; name: "InsufficientFunds"; msg: "Insufficient funds in round escrow" }
   ];
 };
 
@@ -183,7 +188,8 @@ export const BINARY_MARKET_IDL: BinaryMarketProgram = {
       accounts: [
         { name: "round", isMut: true, isSigner: false },
         { name: "config", isMut: true, isSigner: false },
-        { name: "authority", isMut: true, isSigner: true },
+        { name: "payer", isMut: true, isSigner: true },
+        { name: "pythFeed", isMut: false, isSigner: false },
         { name: "systemProgram", isMut: false, isSigner: false },
       ],
       args: [
@@ -191,7 +197,6 @@ export const BINARY_MARKET_IDL: BinaryMarketProgram = {
         { name: "roundNumber", type: "u64" },
         { name: "duration", type: "i64" },
         { name: "lockBuffer", type: "i64" },
-        { name: "pythFeed", type: "publicKey" },
       ],
     },
     {
@@ -263,6 +268,7 @@ export const BINARY_MARKET_IDL: BinaryMarketProgram = {
           { name: "totalBets", type: "u32" },
           { name: "outcome", type: { defined: "RoundOutcome" } },
           { name: "feeCollected", type: "u64" },
+          { name: "bump", type: "u8" },
         ],
       },
     },
@@ -324,5 +330,9 @@ export const BINARY_MARKET_IDL: BinaryMarketProgram = {
     { code: 6004, name: "AlreadyResolved", msg: "Round already resolved" },
     { code: 6005, name: "RoundNotResolved", msg: "Round not yet resolved" },
     { code: 6006, name: "AlreadyClaimed", msg: "Winnings already claimed" },
+    { code: 6007, name: "InvalidPythFeed", msg: "Invalid Pyth price feed account" },
+    { code: 6008, name: "PythPriceTooOld", msg: "Pyth price is too stale" },
+    { code: 6009, name: "PythPriceNegative", msg: "Pyth price is negative or zero" },
+    { code: 6010, name: "InsufficientFunds", msg: "Insufficient funds in round escrow" },
   ],
 };

@@ -562,12 +562,12 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                   new BN(onChainRoundNumber(market.roundNumber, market.interval)),
                   new BN(market.interval),
                   new BN(LOCK_BUFFER_SECONDS),
-                  pythFeed
                 )
                 .accounts({
                   round: roundPda,
                   config: configPda,
-                  authority: wallet.publicKey,
+                  payer: wallet.publicKey,
+                  pythFeed,
                   systemProgram: SystemProgram.programId,
                 })
                 .rpc();
@@ -638,10 +638,14 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             || errMsg.includes("RoundNotBetting")
             || errMsg.includes("InvalidAmount")
             || errMsg.includes("AlreadyResolved")
+            || errMsg.includes("InvalidPythFeed")
+            || errMsg.includes("PythPriceTooOld")
             || errMsg.includes("6001")
             || errMsg.includes("6000")
             || errMsg.includes("6002")
-            || errMsg.includes("6004");
+            || errMsg.includes("6004")
+            || errMsg.includes("6007")
+            || errMsg.includes("6008");
 
           if (isProgramError) {
             console.error("On-chain bet rejected:", errMsg);
@@ -652,7 +656,11 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                   ? "Round is not in betting phase"
                   : errMsg.includes("AlreadyResolved") || errMsg.includes("6004")
                     ? "Round already resolved — wait for the next round"
-                    : "Bet rejected by program"
+                    : errMsg.includes("InvalidPythFeed") || errMsg.includes("6007")
+                      ? "Invalid Pyth price feed"
+                      : errMsg.includes("PythPriceTooOld") || errMsg.includes("6008")
+                        ? "Pyth price is too stale"
+                        : "Bet rejected by program"
             );
           } else {
             // Program not deployed or network issue — fall back to simulation
