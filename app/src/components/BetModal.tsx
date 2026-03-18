@@ -40,6 +40,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
   const [txResult, setTxResult] = useState<{ success: boolean; message: string; txSignature?: string } | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
   const { buyShares, error: tradeError, clearError } = useTrade();
   const { refresh: refreshBalance } = useSolBalance();
 
@@ -81,6 +82,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
       setOutcome(side);
       setLoading(false);
       setTxResult(null);
+      submittingRef.current = false;
       clearError();
       setTimeout(() => inputRef.current?.focus(), 300);
     }
@@ -112,7 +114,8 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
   };
 
   const handleSubmit = async () => {
-    if (amountNum <= 0) return;
+    if (amountNum <= 0 || submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setTxResult(null);
     clearError();
@@ -141,6 +144,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
       });
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   };
 
@@ -273,7 +277,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
               </div>
             )}
 
-            {/* Transaction result feedback */}
+            {/* Transaction result / error feedback */}
             {txResult && (
               <div
                 className={`rounded-xl p-3 text-sm font-medium animate-fade-in ${
@@ -293,6 +297,11 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
                     View on Solana Explorer
                   </a>
                 )}
+              </div>
+            )}
+            {!txResult && tradeError && (
+              <div className="rounded-xl p-3 text-sm font-medium animate-fade-in bg-red-500/15 text-red-400 border border-red-500/20">
+                <p>{tradeError}</p>
               </div>
             )}
 
@@ -466,7 +475,7 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
           </div>
         )}
 
-        {/* Transaction result feedback */}
+        {/* Transaction result / error feedback */}
         {txResult && (
           <div className="px-5">
             <div
@@ -487,6 +496,13 @@ export default function BetModal({ market, side, open, onClose }: BetModalProps)
                   View on Solana Explorer
                 </a>
               )}
+            </div>
+          </div>
+        )}
+        {!txResult && tradeError && (
+          <div className="px-5">
+            <div className="rounded-2xl p-3 text-sm font-medium animate-fade-in bg-red-500/15 text-red-400 border border-red-500/20">
+              <p>{tradeError}</p>
             </div>
           </div>
         )}

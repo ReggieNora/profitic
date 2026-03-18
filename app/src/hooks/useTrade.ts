@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  TransactionInstruction,
+} from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
   getAssociatedTokenAddressSync,
@@ -22,14 +27,18 @@ export interface TradeResult {
 /**
  * Hook that sends real on-chain buyTokens / sellTokens transactions
  * against the Profitic program on Solana devnet.
+ *
+ * Uses wallet.sendTransaction (signs + sends atomically) to avoid
+ * repeated wallet popups that can occur with signTransaction + sendRawTransaction.
  */
 export function useTrade() {
   const { program, provider } = useProgram();
-  const { publicKey } = useWallet();
+  const { publicKey, sendTransaction, connected } = useWallet();
   const { connection } = useConnection();
   const [loading, setLoading] = useState(false);
   const [lastTx, setLastTx] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pendingRef = useRef(false);
 
   /**
    * Buy outcome tokens on an on-chain market.
@@ -45,10 +54,15 @@ export function useTrade() {
       amountSol: number,
       slippagePct = 5
     ): Promise<TradeResult> => {
+      // Prevent double-submission
+      if (pendingRef.current) {
+        return { success: false, error: "Transaction already in progress" };
+      }
+
       setError(null);
       setLastTx(null);
 
-      if (!program || !provider || !publicKey) {
+      if (!program || !provider || !publicKey || !connected) {
         const msg = "Wallet not connected";
         setError(msg);
         return { success: false, error: msg };
@@ -74,6 +88,7 @@ export function useTrade() {
       }
 
       setLoading(true);
+      pendingRef.current = true;
       try {
         const outcomeIndex: number = outcome === "yes" ? 0 : 1;
         const amountLamports = solToLamports(amountSol);
@@ -116,7 +131,7 @@ export function useTrade() {
 
         // Check if ATA exists, create if needed
         const ataInfo = await connection.getAccountInfo(userTokenAccount);
-        const preInstructions: anchor.web3.TransactionInstruction[] = [];
+        const preInstructions: TransactionInstruction[] = [];
         if (!ataInfo) {
           preInstructions.push(
             createAssociatedTokenAccountInstruction(
@@ -134,7 +149,9 @@ export function useTrade() {
         );
         const treasury = (platformAccount as any).treasury as PublicKey;
 
-        const tx = await program.methods
+        // Build the transaction instruction via Anchor, then send via
+        // wallet adapter's sendTransaction to avoid double-signing popups.
+        const ix = await program.methods
           .buyTokens(outcomeIndex, new anchor.BN(amountLamports), maxCost)
           .accounts({
             platform: platformPda,
@@ -148,22 +165,42 @@ export function useTrade() {
             tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
           })
-          .preInstructions(preInstructions)
-          .rpc();
+          .instruction();
 
-        setLastTx(tx);
+        const tx = new Transaction();
+        for (const pre of preInstructions) {
+          tx.add(pre);
+        }
+        tx.add(ix);
+        tx.feePayer = publicKey;
+        tx.recentBlockhash = (
+          await connection.getLatestBlockhash("confirmed")
+        ).blockhash;
+
+        // sendTransaction signs + sends in one step — single wallet popup
+        const signature = await sendTransaction(tx, connection, {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+        });
+
+        // Wait for confirmation
+        await connection.confirmTransaction(signature, "confirmed");
+
+        setLastTx(signature);
         setLoading(false);
-        return { success: true, txSignature: tx };
+        pendingRef.current = false;
+        return { success: true, txSignature: signature };
       } catch (err: unknown) {
         const msg =
           err instanceof Error ? err.message : "Transaction failed";
         console.error("Buy tokens failed:", err);
         setError(msg);
         setLoading(false);
+        pendingRef.current = false;
         return { success: false, error: msg };
       }
     },
-    [program, provider, publicKey, connection]
+    [program, provider, publicKey, connected, connection, sendTransaction]
   );
 
   /**
@@ -176,10 +213,14 @@ export function useTrade() {
       amountSol: number,
       slippagePct = 5
     ): Promise<TradeResult> => {
+      if (pendingRef.current) {
+        return { success: false, error: "Transaction already in progress" };
+      }
+
       setError(null);
       setLastTx(null);
 
-      if (!program || !provider || !publicKey) {
+      if (!program || !provider || !publicKey || !connected) {
         const msg = "Wallet not connected";
         setError(msg);
         return { success: false, error: msg };
@@ -202,6 +243,7 @@ export function useTrade() {
       }
 
       setLoading(true);
+      pendingRef.current = true;
       try {
         const outcomeIndex: number = outcome === "yes" ? 0 : 1;
         const amountLamports = solToLamports(amountSol);
@@ -238,7 +280,7 @@ export function useTrade() {
         );
         const treasury = (platformAccount as any).treasury as PublicKey;
 
-        const tx = await program.methods
+        const ix = await program.methods
           .sellTokens(outcomeIndex, new anchor.BN(amountLamports), minReturn)
           .accounts({
             platform: platformPda,
@@ -251,21 +293,37 @@ export function useTrade() {
             tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
           })
-          .rpc();
+          .instruction();
 
-        setLastTx(tx);
+        const tx = new Transaction();
+        tx.add(ix);
+        tx.feePayer = publicKey;
+        tx.recentBlockhash = (
+          await connection.getLatestBlockhash("confirmed")
+        ).blockhash;
+
+        const signature = await sendTransaction(tx, connection, {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+        });
+
+        await connection.confirmTransaction(signature, "confirmed");
+
+        setLastTx(signature);
         setLoading(false);
-        return { success: true, txSignature: tx };
+        pendingRef.current = false;
+        return { success: true, txSignature: signature };
       } catch (err: unknown) {
         const msg =
           err instanceof Error ? err.message : "Transaction failed";
         console.error("Sell tokens failed:", err);
         setError(msg);
         setLoading(false);
+        pendingRef.current = false;
         return { success: false, error: msg };
       }
     },
-    [program, provider, publicKey, connection]
+    [program, provider, publicKey, connected, connection, sendTransaction]
   );
 
   const clearError = useCallback(() => setError(null), []);
