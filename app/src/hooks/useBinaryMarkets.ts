@@ -92,6 +92,21 @@ function randomBetAmount(): number {
   return BET_AMOUNTS[Math.floor(Math.random() * BET_AMOUNTS.length)];
 }
 
+// Map interval to an offset so each interval gets its own PDA namespace.
+// The on-chain PDA seeds are [ROUND_SEED, asset, round_number] with no interval,
+// so we encode the interval into the round number to avoid collisions.
+const INTERVAL_OFFSETS: Record<number, number> = {
+  60: 1_000_000,
+  180: 2_000_000,
+  300: 3_000_000,
+  900: 4_000_000,
+};
+
+function onChainRoundNumber(localRound: number, interval: number): number {
+  const offset = INTERVAL_OFFSETS[interval] ?? interval * 10_000;
+  return offset + localRound;
+}
+
 // ── Create a fresh market round ──
 
 function createMarket(
@@ -382,7 +397,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           if (currentProgram) {
             try {
               resolvedRoundsRef.current.add(m.id);
-              const [roundPda] = deriveRoundPda(m.asset.symbol, m.roundNumber);
+              const [roundPda] = deriveRoundPda(m.asset.symbol, onChainRoundNumber(m.roundNumber, m.interval));
               // Read-only fetch — no wallet signature required
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const roundAccount = await (currentProgram.account as any)["binaryRoundAccount"].fetch(roundPda);
@@ -561,7 +576,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         setTxError(null);
 
         try {
-          const [roundPda] = deriveRoundPda(market.asset.symbol, market.roundNumber);
+          const [roundPda] = deriveRoundPda(market.asset.symbol, onChainRoundNumber(market.roundNumber, market.interval));
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
@@ -669,7 +684,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       setTxError(null);
 
       try {
-        const [roundPda] = deriveRoundPda(market.asset.symbol, market.roundNumber);
+        const [roundPda] = deriveRoundPda(market.asset.symbol, onChainRoundNumber(market.roundNumber, market.interval));
         const [betPda] = deriveBetPda(roundPda, wallet.publicKey, betIndex);
 
         const tx = await program.methods
