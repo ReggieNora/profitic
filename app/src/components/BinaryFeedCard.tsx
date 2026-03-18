@@ -71,7 +71,6 @@ export default function BinaryFeedCard({
   const [shared, setShared] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
   const lastApiPrice = useRef(0);
-  const driftRef = useRef(0);
   const lastTapRef = useRef(0);
 
   const { asset } = market;
@@ -126,7 +125,6 @@ export default function BinaryFeedCard({
   useEffect(() => {
     setPriceHistory([]);
     lastApiPrice.current = 0;
-    driftRef.current = 0;
   }, [market.id]);
 
   // Seed initial chart data so the chart renders immediately
@@ -137,9 +135,8 @@ export default function BinaryFeedCard({
     if (priceHistory.length === 0) {
       const seed: PricePoint[] = [];
       const now = Date.now();
-      let p = currentPrice;
       for (let i = 20; i >= 1; i--) {
-        p = jitteredPrice(p, asset.symbol);
+        const p = jitteredPrice(currentPrice, asset.symbol);
         const d = new Date(now - i * 2000);
         seed.push({
           time: `${d.getMinutes()}:${d.getSeconds().toString().padStart(2, "0")}`,
@@ -149,16 +146,14 @@ export default function BinaryFeedCard({
       }
       setPriceHistory(seed);
       lastApiPrice.current = currentPrice;
-      driftRef.current = p;
     } else if (currentPrice !== lastApiPrice.current) {
       lastApiPrice.current = currentPrice;
-      driftRef.current = currentPrice;
     }
 
     const addPoint = () => {
-      const base = driftRef.current || currentPrice;
-      const jittered = jitteredPrice(base, asset.symbol);
-      driftRef.current = jittered;
+      // Always jitter from the real currentPrice, not from previous jittered value,
+      // to prevent compounding drift away from the actual price.
+      const jittered = jitteredPrice(currentPrice, asset.symbol);
       const now = new Date();
       const time = `${now.getMinutes()}:${now.getSeconds().toString().padStart(2, "0")}`;
       setPriceHistory((prev) => [...prev, { time, price: jittered, ts: Date.now() }].slice(-150));
