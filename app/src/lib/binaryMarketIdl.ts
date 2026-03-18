@@ -20,15 +20,15 @@ export type BinaryMarketProgram = {
       accounts: [
         { name: "round"; isMut: true; isSigner: false },
         { name: "config"; isMut: true; isSigner: false },
-        { name: "payer"; isMut: true; isSigner: true },
-        { name: "pythFeed"; isMut: false; isSigner: false },
+        { name: "authority"; isMut: true; isSigner: true },
         { name: "systemProgram"; isMut: false; isSigner: false }
       ];
       args: [
         { name: "asset"; type: "string" },
         { name: "roundNumber"; type: "u64" },
         { name: "duration"; type: "i64" },
-        { name: "lockBuffer"; type: "i64" }
+        { name: "lockBuffer"; type: "i64" },
+        { name: "pythFeed"; type: "publicKey" }
       ];
     },
     {
@@ -188,8 +188,7 @@ export const BINARY_MARKET_IDL: BinaryMarketProgram = {
       accounts: [
         { name: "round", isMut: true, isSigner: false },
         { name: "config", isMut: true, isSigner: false },
-        { name: "payer", isMut: true, isSigner: true },
-        { name: "pythFeed", isMut: false, isSigner: false },
+        { name: "authority", isMut: true, isSigner: true },
         { name: "systemProgram", isMut: false, isSigner: false },
       ],
       args: [
@@ -197,6 +196,7 @@ export const BINARY_MARKET_IDL: BinaryMarketProgram = {
         { name: "roundNumber", type: "u64" },
         { name: "duration", type: "i64" },
         { name: "lockBuffer", type: "i64" },
+        { name: "pythFeed", type: "publicKey" },
       ],
     },
     {
