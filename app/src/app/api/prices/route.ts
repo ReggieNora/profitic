@@ -1,27 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Hybrid price API — cascading price sources for reliability.
- *
- * All assets: Pyth Network → CoinCap → CoinGecko
+ * Pyth-only price API.
  *
  * GET /api/prices?ids=bitcoin,ethereum,solana
  *
  * Returns: { bitcoin: 84750.12, ethereum: 2185.50, ... }
  */
 
-// ── Mapping between CoinGecko IDs, CoinCap IDs, and asset symbols ──
+// ── Mapping between CoinGecko IDs and Pyth symbols ──
 
 const COINGECKO_TO_SYMBOL: Record<string, string> = {
   bitcoin: "BTC",
   ethereum: "ETH",
   solana: "SOL",
-};
-
-const COINGECKO_TO_COINCAP: Record<string, string> = {
-  bitcoin: "bitcoin",
-  ethereum: "ethereum",
-  solana: "solana",
 };
 
 const PYTH_HERMES_URL = "https://hermes.pyth.network";
@@ -37,7 +29,7 @@ const PYTH_FEED_IDS: Record<string, string> = {
 const priceCache: Record<string, { price: number; ts: number }> = {};
 const CACHE_TTL = 5_000; // 5 seconds — Pyth is fast, keep prices fresh
 
-// ── Price source fetchers ──
+// ── Pyth price fetcher ──
 
 async function fetchPythPrices(symbols: string[]): Promise<Record<string, number>> {
   const validSymbols = symbols.filter((s) => s in PYTH_FEED_IDS);
@@ -71,46 +63,6 @@ async function fetchPythPrices(symbols: string[]): Promise<Record<string, number
   }
 }
 
-async function fetchCoinCapPrices(coincapIds: string[]): Promise<Record<string, number>> {
-  if (coincapIds.length === 0) return {};
-  try {
-    const url = `https://api.coincap.io/v2/assets?ids=${encodeURIComponent(coincapIds.join(","))}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return {};
-
-    const data = await res.json();
-    const result: Record<string, number> = {};
-    if (Array.isArray(data?.data)) {
-      for (const asset of data.data) {
-        const price = parseFloat(asset.priceUsd);
-        if (asset.id && !isNaN(price) && price > 0) result[asset.id] = price;
-      }
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-async function fetchCoinGeckoPrices(ids: string[]): Promise<Record<string, number>> {
-  if (ids.length === 0) return {};
-  try {
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=usd`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return {};
-
-    const data = await res.json();
-    const result: Record<string, number> = {};
-    for (const [id, val] of Object.entries(data)) {
-      const v = val as { usd?: number };
-      if (typeof v?.usd === "number") result[id] = v.usd;
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
 // ── Main handler ──
 
 export async function GET(req: NextRequest) {
@@ -133,57 +85,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(cached);
   }
 
-  // Separate core vs non-core CoinGecko IDs
-  const coreIds = coingeckoIds.filter((id) => id in COINGECKO_TO_SYMBOL);
-  const nonCoreIds = coingeckoIds.filter((id) => !(id in COINGECKO_TO_SYMBOL));
-  const coreSymbols = coreIds.map((id) => COINGECKO_TO_SYMBOL[id]);
+  // Only serve assets that have Pyth feeds
+  const supportedIds = coingeckoIds.filter((id) => id in COINGECKO_TO_SYMBOL);
+  const symbols = supportedIds.map((id) => COINGECKO_TO_SYMBOL[id]);
 
   const result: Record<string, number> = {};
 
-  // 1. Core assets: Pyth → CoinCap → CoinGecko cascade
-  if (coreIds.length > 0) {
-    // Try Pyth first (fastest, on-chain)
-    const pythPrices = await fetchPythPrices(coreSymbols);
+  if (symbols.length > 0) {
+    const pythPrices = await fetchPythPrices(symbols);
 
     // Map Pyth results back to CoinGecko IDs for consistent response format
     const symbolToId: Record<string, string> = {};
-    for (const id of coreIds) symbolToId[COINGECKO_TO_SYMBOL[id]] = id;
+    for (const id of supportedIds) symbolToId[COINGECKO_TO_SYMBOL[id]] = id;
 
     for (const [sym, price] of Object.entries(pythPrices)) {
       result[symbolToId[sym]] = price;
     }
-
-    // Find missing core assets
-    const missingCoreIds = coreIds.filter((id) => !(id in result));
-
-    if (missingCoreIds.length > 0) {
-      // Try CoinCap for missing
-      const coincapIds = missingCoreIds
-        .map((id) => COINGECKO_TO_COINCAP[id])
-        .filter(Boolean);
-      const coincapPrices = await fetchCoinCapPrices(coincapIds);
-
-      // Map CoinCap results back to CoinGecko IDs
-      for (const id of missingCoreIds) {
-        const coincapId = COINGECKO_TO_COINCAP[id];
-        if (coincapId && coincapPrices[coincapId]) {
-          result[id] = coincapPrices[coincapId];
-        }
-      }
-
-      // Still missing? Fall back to CoinGecko
-      const stillMissing = missingCoreIds.filter((id) => !(id in result));
-      if (stillMissing.length > 0) {
-        const cgPrices = await fetchCoinGeckoPrices(stillMissing);
-        Object.assign(result, cgPrices);
-      }
-    }
-  }
-
-  // 2. Non-core IDs: CoinGecko
-  if (nonCoreIds.length > 0) {
-    const cgPrices = await fetchCoinGeckoPrices(nonCoreIds);
-    Object.assign(result, cgPrices);
   }
 
   // Update per-asset cache

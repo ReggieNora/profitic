@@ -875,6 +875,11 @@ async function pollCryptoResolutions(): Promise<void> {
           strikePrice: market.strike_price || undefined,
         });
 
+        if (!result) {
+          console.warn(`[indexer] Pyth price unavailable for ${market.crypto_asset}, skipping resolution of market ${market.id}`);
+          continue;
+        }
+
         await db.updateMarketFields(market.id, {
           status: MarketStatus.Resolved,
           winning_outcome: result.winningOutcome,

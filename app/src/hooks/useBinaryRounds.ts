@@ -11,12 +11,7 @@ import {
 } from "@/types";
 import { fetchCryptoPrice } from "@/hooks/useCryptoPrice";
 
-// Fallback prices in case CoinGecko is slow/down
-const FALLBACK_PRICES: Record<CryptoAsset, number> = {
-  BTC: 74000,
-  ETH: 1900,
-  SOL: 130,
-};
+// No fallback prices — all prices come exclusively from Pyth Network
 
 const ASSETS: CryptoAsset[] = ["BTC", "ETH", "SOL"];
 
@@ -104,10 +99,11 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
       const newRounds = {} as Record<CryptoAsset, BinaryRound>;
 
       for (const asset of ASSETS) {
-        // Use fetched price, fall back to hardcoded if API failed
-        const price = prices[asset] > 0 ? prices[asset] : FALLBACK_PRICES[asset];
-        prices[asset] = price;
-        newRounds[asset] = createRound(asset, 1, price, now);
+        // Only create rounds with real Pyth prices — no fallbacks
+        const price = prices[asset];
+        if (price > 0) {
+          newRounds[asset] = createRound(asset, 1, price, now);
+        }
       }
 
       setLivePrices(prices);

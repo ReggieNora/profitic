@@ -67,11 +67,7 @@ export interface CompletedRound {
 
 const LOCK_BUFFER_SECONDS = 30; // lock bets 30s before expiry (must match on-chain lock_buffer)
 
-const FALLBACK_PRICES: Record<string, number> = {
-  bitcoin: 74000,
-  ethereum: 1900,
-  solana: 130,
-};
+// No fallback prices — all prices come exclusively from Pyth Network
 
 function solToLamports(sol: number): number {
   return Math.round(sol * 1_000_000_000);
@@ -198,71 +194,49 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     }
   }, [wallet.publicKey]);
 
-  // Client-only init: create markets with fallback prices, then fetch real data
+  // Client-only init: fetch real Pyth prices first, then create markets
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
-    // Create initial markets synchronously (client-side only, no hydration mismatch)
-    const now = Math.floor(Date.now() / 1000);
-    const fallbackPrices: Record<string, number> = {};
-    const initialMarkets: BinaryMarket[] = [];
-
-    for (const asset of CORE_ASSETS) {
-      const price = FALLBACK_PRICES[asset.coingeckoId] || 0.01;
-      fallbackPrices[asset.symbol] = price;
-      for (const iv of asset.intervals) {
-        const key = `${asset.symbol}-${iv}`;
-        roundCounters.current[key] = 1;
-        initialMarkets.push(createMarket(asset, iv, 1, price, now));
-      }
-    }
-
-    setLivePrices(fallbackPrices);
-    setMarkets(initialMarkets);
-    setLoading(false);
-
-    const fetchRealData = async () => {
+    const init = async () => {
       // Discover trending tokens (non-blocking)
       const trending = await discoverTrendingTokens(3);
       const allAssets = [...CORE_ASSETS, ...trending];
       setAssets(allAssets);
 
-      // Fetch all prices via Pyth → CoinCap → CoinGecko cascade
+      // Fetch all prices from Pyth (no fallbacks)
       const allIds = allAssets.map((a) => a.coingeckoId);
       const fetchedPrices = await fetchAssetPrices(allIds);
 
-      const prices: Record<string, number> = { ...fallbackPrices };
+      const prices: Record<string, number> = {};
       for (const asset of allAssets) {
         const p = fetchedPrices[asset.coingeckoId];
         if (p && p > 0) {
           prices[asset.symbol] = p;
-        } else {
-          prices[asset.symbol] = prices[asset.symbol] || FALLBACK_PRICES[asset.coingeckoId] || 0.01;
         }
       }
       setLivePrices(prices);
 
-      // Add markets for any new trending assets
-      const nowUpdated = Math.floor(Date.now() / 1000);
-      const newMarkets: BinaryMarket[] = [];
-      for (const asset of trending) {
+      // Create markets only for assets where we got a real Pyth price
+      const now = Math.floor(Date.now() / 1000);
+      const initialMarkets: BinaryMarket[] = [];
+
+      for (const asset of allAssets) {
+        const price = prices[asset.symbol];
+        if (!price || price <= 0) continue; // skip assets without Pyth price
         for (const iv of asset.intervals) {
           const key = `${asset.symbol}-${iv}`;
-          if (!roundCounters.current[key]) {
-            roundCounters.current[key] = 1;
-            const price = prices[asset.symbol] || 0.01;
-            newMarkets.push(createMarket(asset, iv, 1, price, nowUpdated));
-          }
+          roundCounters.current[key] = 1;
+          initialMarkets.push(createMarket(asset, iv, 1, price, now));
         }
       }
 
-      if (newMarkets.length > 0) {
-        setMarkets((prev) => [...prev, ...newMarkets]);
-      }
+      setMarkets(initialMarkets);
+      setLoading(false);
     };
 
-    fetchRealData();
+    init();
   }, []);
 
   // Helper: process payouts + history after a market resolves (used by both on-chain and simulation paths)
@@ -349,7 +323,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     const interval = setInterval(async () => {
       const now = Math.floor(Date.now() / 1000);
 
-      // Refresh prices via Pyth → CoinCap → CoinGecko cascade
+      // Refresh prices from Pyth
       const currentAssets = assets;
       const newPrices: Record<string, number> = { ...livePricesRef.current };
       const allIds = currentAssets.map((a) => a.coingeckoId);

@@ -32,10 +32,7 @@ async function fetchLivePrices(): Promise<Record<string, number>> {
     }
     livePriceFetched = true;
   } catch {
-    // Fallback prices if CoinGecko is unreachable
-    if (!livePriceCache.BTC) livePriceCache.BTC = 74000;
-    if (!livePriceCache.ETH) livePriceCache.ETH = 1900;
-    if (!livePriceCache.SOL) livePriceCache.SOL = 130;
+    // No fallback prices — Pyth is the only source
     livePriceFetched = true;
   }
 

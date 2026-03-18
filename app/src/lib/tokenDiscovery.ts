@@ -24,7 +24,7 @@ export interface TradingAsset {
   /** Whether this is a core asset or a trending pump.fun token */
   type: "core" | "pumpfun";
   /** Primary price source for this asset */
-  priceSource: "pyth" | "jupiter" | "coingecko" | "coincap";
+  priceSource: "pyth" | "jupiter";
   /** Color used in UI accents */
   color: string;
   /** Current USD price (populated at runtime) */
@@ -215,42 +215,7 @@ const PRICE_CACHE_TTL = 10_000; // keep client prices fresh
 const chartCache: Record<string, { data: { time: number; price: number }[]; ts: number }> = {};
 const CHART_CACHE_TTL = 60_000;
 
-/** Approximate fallback prices keyed by coingeckoId */
-const FALLBACK_BASE_PRICES: Record<string, number> = {
-  bitcoin: 74000,
-  ethereum: 1900,
-  solana: 130,
-  bonk: 0.000015,
-  dogwifcoin: 1.2,
-  popcat: 0.35,
-  "frog-on-solana": 0.002,
-};
-
-/**
- * Generate synthetic 24h chart data as a last-resort fallback.
- * Creates a realistic-looking random walk around the base price.
- */
-function generateFallbackChart(
-  coingeckoId: string,
-  points: number = 288
-): { time: number; price: number }[] {
-  const basePrice = FALLBACK_BASE_PRICES[coingeckoId] || 1;
-  const now = Date.now();
-  const interval = (24 * 60 * 60 * 1000) / points; // ~5 min per point
-  const result: { time: number; price: number }[] = [];
-
-  let price = basePrice * (0.98 + Math.random() * 0.04); // start ±2%
-  for (let i = 0; i < points; i++) {
-    const drift = (Math.random() - 0.5) * 0.002 * basePrice;
-    price = Math.max(basePrice * 0.9, Math.min(basePrice * 1.1, price + drift));
-    result.push({
-      time: now - (points - i) * interval,
-      price,
-    });
-  }
-
-  return result;
-}
+// No fallback prices or synthetic charts — all data comes from Pyth/real APIs
 
 function parseChartResponse(data: { prices?: [number, number][] }): { time: number; price: number }[] {
   const prices: [number, number][] = data?.prices || [];
@@ -289,10 +254,8 @@ export async function fetchDailyChart(
     // fallback below
   }
 
-  // Generate synthetic fallback so the chart is never empty
-  const fallback = generateFallbackChart(coingeckoId);
-  chartCache[cacheKey] = { data: fallback, ts: Date.now() };
-  return fallback;
+  // No synthetic fallback — return empty array if chart API is unavailable
+  return [];
 }
 
 /**
@@ -344,8 +307,7 @@ export async function fetchPriceChart(
 }
 
 /**
- * Fetch price for a Solana token via the hybrid /api/prices endpoint.
- * Uses CoinGecko ID (Pyth → CoinCap → CoinGecko cascade).
+ * Fetch price for a Solana token via /api/prices (Pyth only).
  */
 export async function fetchJupiterPrice(symbolOrMint: string): Promise<number> {
   // Route through /api/prices (Pyth → CoinCap → CoinGecko) instead of Jupiter
@@ -353,8 +315,7 @@ export async function fetchJupiterPrice(symbolOrMint: string): Promise<number> {
 }
 
 /**
- * Fetch price for an asset. Uses the hybrid /api/prices endpoint which
- * cascades through Pyth → CoinCap → CoinGecko for core assets.
+ * Fetch price for an asset via /api/prices (Pyth only for core assets).
  */
 export async function fetchAssetPrice(coingeckoId: string): Promise<number> {
   const cached = assetPriceCache[coingeckoId];
@@ -362,7 +323,7 @@ export async function fetchAssetPrice(coingeckoId: string): Promise<number> {
     return cached.price;
   }
 
-  // Use server-side proxy (now hybrid: Pyth → CoinCap → CoinGecko)
+  // Use server-side proxy (Pyth only)
   try {
     const res = await fetch(
       `/api/prices?ids=${encodeURIComponent(coingeckoId)}`,
@@ -384,7 +345,7 @@ export async function fetchAssetPrice(coingeckoId: string): Promise<number> {
 
 /**
  * Fetch prices for multiple assets in a single batched request.
- * All assets go through /api/prices (Pyth → CoinCap → CoinGecko).
+ * All assets go through /api/prices (Pyth only).
  * The jupiterSymbols parameter is accepted for backward compatibility
  * but those symbols are now also routed through /api/prices by CoinGecko ID.
  */

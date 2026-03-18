@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { CryptoAsset } from "@/types";
 
-type PriceSource = "pyth" | "coincap" | "coingecko" | "fallback";
+type PriceSource = "pyth" | "unavailable";
 
 interface CryptoPriceResult {
   price: number;
@@ -23,14 +23,13 @@ const COINGECKO_IDS: Record<string, string> = {
 };
 
 /**
- * Hook to fetch live crypto prices via hybrid server-side proxy.
- * All assets: Pyth → CoinCap → CoinGecko (via /api/prices)
+ * Hook to fetch live crypto prices via Pyth Network (via /api/prices).
  */
 export function useCryptoPrice(asset: CryptoAsset | string): CryptoPriceResult {
   const [price, setPrice] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<PriceSource>("fallback");
+  const [source, setSource] = useState<PriceSource>("unavailable");
 
   const fetchPrice = useCallback(async () => {
     const cached = priceCache[asset];
@@ -43,9 +42,9 @@ export function useCryptoPrice(asset: CryptoAsset | string): CryptoPriceResult {
 
     try {
       let fetchedPrice: number | undefined;
-      let fetchedSource: PriceSource = "fallback";
+      let fetchedSource: PriceSource = "unavailable";
 
-      // All assets: use hybrid /api/prices (Pyth → CoinCap → CoinGecko)
+      // All assets: use /api/prices (Pyth only)
       const id = COINGECKO_IDS[asset.toUpperCase()] || asset.toLowerCase();
       const res = await fetch(
         `/api/prices?ids=${encodeURIComponent(id)}`,
@@ -55,7 +54,7 @@ export function useCryptoPrice(asset: CryptoAsset | string): CryptoPriceResult {
       if (!res.ok) throw new Error(`Price proxy returned ${res.status}`);
       const data = await res.json();
       fetchedPrice = data?.[id];
-      fetchedSource = "pyth"; // Pyth is primary; the proxy cascades internally
+      fetchedSource = "pyth";
 
       if (typeof fetchedPrice === "number" && fetchedPrice > 0) {
         priceCache[asset] = { price: fetchedPrice, timestamp: Date.now(), source: fetchedSource };
