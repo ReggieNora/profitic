@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { SystemProgram } from "@solana/web3.js";
 import { BN } from "@coral-xyz/anchor";
 import {
   TradingAsset,
@@ -11,15 +11,7 @@ import {
   fetchAssetPrices,
   formatInterval,
 } from "@/lib/tokenDiscovery";
-import { useBinaryProgram, deriveRoundPda, deriveBetPda, deriveConfigPda } from "./useBinaryProgram";
-
-// Pyth devnet price feed account addresses (Solana devnet)
-// See: https://pyth.network/developers/price-feed-ids
-const PYTH_DEVNET_FEEDS: Record<string, string> = {
-  BTC: "HovQMDrbAgAYPCmHVSrezcSmkMtXSSUsLDFANExrZh2J",
-  ETH: "EdVCmQ9FSPcVe5YySXDPCRmc8aDQLKJ9GvYRNiqueLuZ",
-  SOL: "J83w4HKfqxwcq3BEMMkPFSppX3gqekLyLJBexebFVkix",
-};
+import { useBinaryProgram, deriveRoundPda, deriveBetPda } from "./useBinaryProgram";
 
 // ── Types ──
 
@@ -184,8 +176,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   // Refs so the tick loop can access current program/wallet without stale closures
   const programRef = useRef(program);
   programRef.current = program;
-  const walletRef = useRef(wallet);
-  walletRef.current = wallet;
+
 
   // Initialize demo balance from wallet's actual SOL balance
   useEffect(() => {
@@ -376,43 +367,32 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       }
       setLivePrices(newPrices);
 
-      // Pre-scan: attempt on-chain resolution for rounds that have ended
-      // This must happen outside setMarkets because it's async
+      // Pre-scan: check on-chain state for rounds that have ended (read-only, no wallet popups)
+      // Resolution transactions are NOT sent automatically — that's a cranker's job.
+      // We only READ on-chain accounts to see if a cranker already resolved the round.
       const onChainResolutions: Record<string, BinaryMarket> = {};
       const currentProgram = programRef.current;
-      const currentWallet = walletRef.current;
       // Use a snapshot of current markets (read via ref to avoid stale closure)
       const marketsSnapshot = markets;
       for (const m of marketsSnapshot) {
         if ((m.phase === "betting" || m.phase === "locked") && now >= m.endTime) {
-          // Skip rounds we've already attempted to resolve (prevents repeated wallet popups)
+          // Skip rounds we've already checked (prevents repeated RPC calls)
           if (resolvedRoundsRef.current.has(m.id)) continue;
 
-          if (currentProgram && currentWallet.publicKey) {
-            const pythFeedKey = PYTH_DEVNET_FEEDS[m.asset.symbol];
-            if (pythFeedKey) {
-              // Mark as attempted BEFORE sending tx to prevent concurrent attempts
+          if (currentProgram) {
+            try {
               resolvedRoundsRef.current.add(m.id);
-              try {
-                const [roundPda] = deriveRoundPda(m.asset.symbol, m.roundNumber);
-                const [configPda] = deriveConfigPda();
-                await currentProgram.methods
-                  .resolveRound()
-                  .accounts({
-                    round: roundPda,
-                    config: configPda,
-                    pythFeed: new PublicKey(pythFeedKey),
-                    cranker: currentWallet.publicKey,
-                  })
-                  .rpc();
-                console.log(`Round ${m.id} resolved on-chain`);
+              const [roundPda] = deriveRoundPda(m.asset.symbol, m.roundNumber);
+              // Read-only fetch — no wallet signature required
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const roundAccount = await (currentProgram.account as any)["binaryRoundAccount"].fetch(roundPda);
+              const outcomeRaw = roundAccount.outcome;
+              const isResolved = outcomeRaw && (outcomeRaw.up || outcomeRaw.down || outcomeRaw.refund);
 
-                // Fetch resolved data from chain
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const roundAccount = await (currentProgram.account as any)["binaryRoundAccount"].fetch(roundPda);
+              if (isResolved) {
+                console.log(`Round ${m.id} resolved on-chain by cranker, fetching result...`);
                 const endPriceRaw = (roundAccount.endPrice as { toNumber?: () => number });
                 const endPrice = typeof endPriceRaw?.toNumber === "function" ? endPriceRaw.toNumber() : Number(endPriceRaw);
-                const outcomeRaw = roundAccount.outcome;
                 const onChainOutcome: "up" | "down" | "refund" =
                   outcomeRaw?.up ? "up" : outcomeRaw?.down ? "down" : "refund";
                 const feeRaw = (roundAccount.feeCollected as { toNumber?: () => number });
@@ -425,43 +405,13 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                   outcome: onChainOutcome,
                   feeCollected,
                 };
-              } catch (err) {
-                const errMsg = err instanceof Error ? err.message : String(err);
-                const isAlreadyResolved = errMsg.includes("AlreadyResolved") || errMsg.includes("6004");
-
-                if (isAlreadyResolved) {
-                  // Round was resolved by another crank — fetch on-chain state instead of simulating
-                  console.log(`Round ${m.id} already resolved on-chain, fetching result...`);
-                  try {
-                    const [roundPda] = deriveRoundPda(m.asset.symbol, m.roundNumber);
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const roundAccount = await (currentProgram.account as any)["binaryRoundAccount"].fetch(roundPda);
-                    const endPriceRaw = (roundAccount.endPrice as { toNumber?: () => number });
-                    const endPrice = typeof endPriceRaw?.toNumber === "function" ? endPriceRaw.toNumber() : Number(endPriceRaw);
-                    const outcomeRaw = roundAccount.outcome;
-                    const onChainOutcome: "up" | "down" | "refund" =
-                      outcomeRaw?.up ? "up" : outcomeRaw?.down ? "down" : "refund";
-                    const feeRaw = (roundAccount.feeCollected as { toNumber?: () => number });
-                    const feeCollected = typeof feeRaw?.toNumber === "function" ? feeRaw.toNumber() : Number(feeRaw);
-
-                    onChainResolutions[m.id] = {
-                      ...m,
-                      phase: "complete",
-                      finalPrice: endPrice > 0 ? endPrice / 1e8 : (newPrices[m.asset.symbol] || m.entryPrice),
-                      outcome: onChainOutcome,
-                      feeCollected,
-                    };
-                  } catch (fetchErr) {
-                    console.warn("Failed to fetch already-resolved round:", fetchErr);
-                    // Allow retry on next tick if fetch fails
-                    resolvedRoundsRef.current.delete(m.id);
-                  }
-                } else {
-                  console.warn("On-chain resolve unavailable, using simulation:", errMsg);
-                  // Allow simulation fallback — remove from resolved set so simulation path runs
-                  resolvedRoundsRef.current.delete(m.id);
-                }
+              } else {
+                // Round exists on-chain but not yet resolved — let simulation handle it
+                resolvedRoundsRef.current.delete(m.id);
               }
+            } catch {
+              // Round account doesn't exist on-chain — use simulation fallback
+              resolvedRoundsRef.current.delete(m.id);
             }
           }
         }
