@@ -173,6 +173,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const livePricesRef = useRef(livePrices);
   livePricesRef.current = livePrices;
 
+  // Track rounds already resolved/attempted to avoid repeated wallet popups
+  const resolvedRoundsRef = useRef<Set<string>>(new Set());
+
   // On-chain program access
   const { program } = useBinaryProgram();
   const wallet = useWallet();
@@ -379,9 +382,14 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       const marketsSnapshot = markets;
       for (const m of marketsSnapshot) {
         if ((m.phase === "betting" || m.phase === "locked") && now >= m.endTime) {
+          // Skip rounds we've already attempted to resolve (prevents repeated wallet popups)
+          if (resolvedRoundsRef.current.has(m.id)) continue;
+
           if (currentProgram && currentWallet.publicKey) {
             const pythFeedKey = PYTH_DEVNET_FEEDS[m.asset.symbol];
             if (pythFeedKey) {
+              // Mark as attempted BEFORE sending tx to prevent concurrent attempts
+              resolvedRoundsRef.current.add(m.id);
               try {
                 const [roundPda] = deriveRoundPda(m.asset.symbol, m.roundNumber);
                 const [configPda] = deriveConfigPda();
@@ -415,7 +423,41 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                   feeCollected,
                 };
               } catch (err) {
-                console.warn("On-chain resolve unavailable, using simulation:", err instanceof Error ? err.message : err);
+                const errMsg = err instanceof Error ? err.message : String(err);
+                const isAlreadyResolved = errMsg.includes("AlreadyResolved") || errMsg.includes("6004");
+
+                if (isAlreadyResolved) {
+                  // Round was resolved by another crank — fetch on-chain state instead of simulating
+                  console.log(`Round ${m.id} already resolved on-chain, fetching result...`);
+                  try {
+                    const [roundPda] = deriveRoundPda(m.asset.symbol, m.roundNumber);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const roundAccount = await (currentProgram.account as any)["binaryRoundAccount"].fetch(roundPda);
+                    const endPriceRaw = (roundAccount.endPrice as { toNumber?: () => number });
+                    const endPrice = typeof endPriceRaw?.toNumber === "function" ? endPriceRaw.toNumber() : Number(endPriceRaw);
+                    const outcomeRaw = roundAccount.outcome;
+                    const onChainOutcome: "up" | "down" | "refund" =
+                      outcomeRaw?.up ? "up" : outcomeRaw?.down ? "down" : "refund";
+                    const feeRaw = (roundAccount.feeCollected as { toNumber?: () => number });
+                    const feeCollected = typeof feeRaw?.toNumber === "function" ? feeRaw.toNumber() : Number(feeRaw);
+
+                    onChainResolutions[m.id] = {
+                      ...m,
+                      phase: "complete",
+                      finalPrice: endPrice > 0 ? endPrice / 1e8 : (newPrices[m.asset.symbol] || m.entryPrice),
+                      outcome: onChainOutcome,
+                      feeCollected,
+                    };
+                  } catch (fetchErr) {
+                    console.warn("Failed to fetch already-resolved round:", fetchErr);
+                    // Allow retry on next tick if fetch fails
+                    resolvedRoundsRef.current.delete(m.id);
+                  }
+                } else {
+                  console.warn("On-chain resolve unavailable, using simulation:", errMsg);
+                  // Allow simulation fallback — remove from resolved set so simulation path runs
+                  resolvedRoundsRef.current.delete(m.id);
+                }
               }
             }
           }
@@ -572,7 +614,15 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           const roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
           const totalBets = (roundAccount.totalBets as number) || 0;
 
-          // Pre-flight: check on-chain lock_time before sending tx
+          // Pre-flight: check on-chain round status before sending tx
+          const outcomeRaw = roundAccount.outcome;
+          const isResolved = outcomeRaw && (outcomeRaw.up || outcomeRaw.down || outcomeRaw.refund);
+          if (isResolved) {
+            setTxError("Round already resolved — wait for the next round");
+            setTxPending(false);
+            return;
+          }
+
           const lockTime = (roundAccount.lockTime as { toNumber?: () => number });
           const onChainLock = typeof lockTime?.toNumber === "function" ? lockTime.toNumber() : Number(lockTime);
           const nowSec = Math.floor(Date.now() / 1000);
@@ -602,13 +652,26 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
 
+          // Check if user rejected the wallet signature request
+          const isUserRejection = errMsg.includes("User rejected")
+            || errMsg.includes("WalletSignTransactionError");
+
+          if (isUserRejection) {
+            console.log("User rejected transaction signing");
+            setTxError("Transaction cancelled");
+            setTxPending(false);
+            return;
+          }
+
           // Check for known on-chain program errors — surface them to the user
           const isProgramError = errMsg.includes("BettingLocked")
             || errMsg.includes("RoundNotBetting")
             || errMsg.includes("InvalidAmount")
+            || errMsg.includes("AlreadyResolved")
             || errMsg.includes("6001")
             || errMsg.includes("6000")
-            || errMsg.includes("6002");
+            || errMsg.includes("6002")
+            || errMsg.includes("6004");
 
           if (isProgramError) {
             console.error("On-chain bet rejected:", errMsg);
@@ -617,7 +680,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                 ? "Betting is locked — round is closing soon"
                 : errMsg.includes("RoundNotBetting") || errMsg.includes("6000")
                   ? "Round is not in betting phase"
-                  : "Bet rejected by program"
+                  : errMsg.includes("AlreadyResolved") || errMsg.includes("6004")
+                    ? "Round already resolved — wait for the next round"
+                    : "Bet rejected by program"
             );
           } else {
             // Program not deployed or network issue — fall back to simulation
