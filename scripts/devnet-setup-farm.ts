@@ -24,6 +24,13 @@ import { AnchorProvider, Program, Idl, BN } from "@coral-xyz/anchor";
 import * as fs from "fs";
 import * as path from "path";
 
+// Configure proxy for Node.js native fetch (undici)
+const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || "";
+if (proxyUrl) {
+  const { ProxyAgent, setGlobalDispatcher } = require("undici");
+  setGlobalDispatcher(new ProxyAgent(proxyUrl));
+}
+
 // ── Config ──
 const PROGRAM_ID = new PublicKey(
   process.env.YIELD_FARM_PROGRAM_ID ||
@@ -35,7 +42,7 @@ const STAKE_VAULT_SEED = Buffer.from("stake_vault");
 
 // How much SOL to seed the vault with for reward payouts (default 2 SOL)
 const INITIAL_VAULT_FUND_SOL = parseFloat(
-  process.env.VAULT_FUND_SOL || "2"
+  process.env.VAULT_FUND_SOL || "0.1"
 );
 
 async function main() {
@@ -55,11 +62,9 @@ async function main() {
   const balance = await connection.getBalance(wallet.publicKey);
   console.log("Balance: ", balance / 1e9, "SOL");
 
-  if (balance < 0.5 * 1e9) {
-    console.log("Requesting airdrop...");
-    const sig = await connection.requestAirdrop(wallet.publicKey, 2 * 1e9);
-    await connection.confirmTransaction(sig);
-    console.log("Airdrop confirmed");
+  if (balance < 0.01 * 1e9) {
+    console.error("Insufficient balance. Please fund the wallet with devnet SOL.");
+    process.exit(1);
   }
 
   // Load IDL
@@ -115,9 +120,39 @@ async function main() {
         return txs;
       },
     },
-    { commitment: "confirmed" }
+    { commitment: "confirmed", skipPreflight: true, preflightCommitment: "processed" }
   );
   const program = new Program(idl, PROGRAM_ID, provider);
+
+  // Helper: send tx and confirm via CLI polling (avoids WS timeout)
+  const { execSync } = require("child_process");
+  const solanaPath = "/root/.local/share/solana/install/active_release/bin/solana";
+
+  async function sendAndConfirmViaCli(methodBuilder: any): Promise<string> {
+    let sig: string;
+    try {
+      sig = await methodBuilder.rpc({ skipPreflight: true });
+    } catch (err: any) {
+      if (err.signature) {
+        sig = err.signature;
+        console.log("  Tx sent (confirmation timed out, polling via CLI):", sig);
+      } else {
+        throw err;
+      }
+    }
+    for (let i = 0; i < 30; i++) {
+      try {
+        const result = execSync(`${solanaPath} confirm ${sig} 2>&1`, { encoding: "utf-8" }).trim();
+        if (result.includes("Finalized") || result.includes("Confirmed")) {
+          console.log("  Confirmed:", result);
+          return sig;
+        }
+      } catch {}
+      await new Promise((r: any) => setTimeout(r, 2000));
+    }
+    console.log("  Warning: could not confirm tx, but it may have succeeded");
+    return sig!;
+  }
 
   // ── Derive PDAs ──
   const [farmConfigPda] = PublicKey.findProgramAddressSync(
@@ -139,16 +174,17 @@ async function main() {
   } else {
     console.log("\nInitializing farm config...");
     // Use deployer as both authority and reward authority for devnet
-    const tx = await program.methods
-      .initializeFarm(wallet.publicKey)
-      .accounts({
-        farmConfig: farmConfigPda,
-        stakeVault: stakeVaultPda,
-        authority: wallet.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([wallet])
-      .rpc();
+    const tx = await sendAndConfirmViaCli(
+      program.methods
+        .initializeFarm(wallet.publicKey)
+        .accounts({
+          farmConfig: farmConfigPda,
+          stakeVault: stakeVaultPda,
+          authority: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([wallet])
+    );
     console.log("Farm initialized! tx:", tx);
   }
 
@@ -160,16 +196,17 @@ async function main() {
   if (vaultBalance < fundLamports) {
     const needed = fundLamports - vaultBalance;
     console.log(`Funding vault with ${needed / 1e9} SOL...`);
-    const tx = await program.methods
-      .fundVault(new BN(needed))
-      .accounts({
-        farmConfig: farmConfigPda,
-        stakeVault: stakeVaultPda,
-        funder: wallet.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([wallet])
-      .rpc();
+    const tx = await sendAndConfirmViaCli(
+      program.methods
+        .fundVault(new BN(needed))
+        .accounts({
+          farmConfig: farmConfigPda,
+          stakeVault: stakeVaultPda,
+          funder: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([wallet])
+    );
     console.log("Vault funded! tx:", tx);
   } else {
     console.log("Vault already has sufficient funds.");
