@@ -288,8 +288,8 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           const m = updated[i];
           if (!m) continue;
 
-          // Phase transitions
-          if (m.phase === "betting" && now >= m.lockTime) {
+          // Phase transitions (lock 2s early to account for clock skew with Solana)
+          if (m.phase === "betting" && now >= m.lockTime - 2) {
             updated[i] = { ...m, phase: "locked" };
             changed = true;
             continue;
@@ -493,6 +493,17 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           const roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
           const totalBets = (roundAccount.totalBets as number) || 0;
 
+          // Pre-flight: check on-chain lock_time before sending tx
+          const lockTime = (roundAccount.lockTime as { toNumber?: () => number });
+          const onChainLock = typeof lockTime?.toNumber === "function" ? lockTime.toNumber() : Number(lockTime);
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (onChainLock && nowSec >= onChainLock - 2) {
+            // Within 2s of lock or past it — reject client-side to avoid on-chain error
+            setTxError("Betting is locked — round is closing soon");
+            setTxPending(false);
+            return;
+          }
+
           const [betPda] = deriveBetPda(roundPda, wallet.publicKey, totalBets);
 
           const sideArg = side === "up" ? { up: {} } : { down: {} };
@@ -510,9 +521,30 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           console.log("Bet placed on-chain:", tx);
           applyBet(wallet.publicKey.toBase58().slice(0, 4) + ".." + wallet.publicKey.toBase58().slice(-4));
         } catch (err: unknown) {
-          // On-chain failed (program not deployed) — fall back to simulation
-          console.warn("On-chain bet unavailable, using simulation:", err instanceof Error ? err.message : err);
-          applySimulatedBet();
+          const errMsg = err instanceof Error ? err.message : String(err);
+
+          // Check for known on-chain program errors — surface them to the user
+          const isProgramError = errMsg.includes("BettingLocked")
+            || errMsg.includes("RoundNotBetting")
+            || errMsg.includes("InvalidAmount")
+            || errMsg.includes("6001")
+            || errMsg.includes("6000")
+            || errMsg.includes("6002");
+
+          if (isProgramError) {
+            console.error("On-chain bet rejected:", errMsg);
+            setTxError(
+              errMsg.includes("BettingLocked") || errMsg.includes("6001")
+                ? "Betting is locked — round is closing soon"
+                : errMsg.includes("RoundNotBetting") || errMsg.includes("6000")
+                  ? "Round is not in betting phase"
+                  : "Bet rejected by program"
+            );
+          } else {
+            // Program not deployed or network issue — fall back to simulation
+            console.warn("On-chain bet unavailable, using simulation:", errMsg);
+            applySimulatedBet();
+          }
         } finally {
           setTxPending(false);
         }
