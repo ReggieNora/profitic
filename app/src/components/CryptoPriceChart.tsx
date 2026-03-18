@@ -24,8 +24,6 @@ interface PricePoint {
   price: number;
 }
 
-const POLL_INTERVAL = 3_000; // 3 seconds — fast enough to feel live
-
 const TIMEFRAME_MINUTES: Record<string, number> = {
   "5m": 5,
   "15m": 15,
@@ -99,33 +97,6 @@ export default function CryptoPriceChart({ market }: CryptoPriceChartProps) {
     });
   }, [livePrice, durationMinutes]);
 
-  // Also poll on a fast interval to add simulated micro-ticks between
-  // CoinGecko updates (CoinGecko only updates every ~10s). This makes
-  // the chart feel alive.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (lastLivePrice.current <= 0) return;
-
-      const now = new Date();
-      // Micro-jitter around the last known live price (±0.02%)
-      const jitter = lastLivePrice.current * 0.0002 * (Math.random() - 0.5);
-      const price = lastLivePrice.current + jitter;
-
-      const point: PricePoint = {
-        time: formatTime(now),
-        timestamp: now.getTime(),
-        price,
-      };
-
-      setPriceHistory((prev) => {
-        const cutoff = now.getTime() - durationMinutes * 60 * 1000;
-        const filtered = prev.filter((p) => p.timestamp >= cutoff);
-        return [...filtered, point];
-      });
-    }, POLL_INTERVAL);
-
-    return () => clearInterval(interval);
-  }, [durationMinutes]);
 
   const currentPrice =
     priceHistory.length > 0

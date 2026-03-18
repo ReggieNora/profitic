@@ -241,9 +241,9 @@ export async function getPrice(asset: string): Promise<PriceResult> {
   // Last resort: simulated prices (for development/testing)
   console.warn(`[oracle] All price sources failed for ${asset}, using simulated price`);
   const simulated: Record<string, number> = {
-    BTC: 84750,
-    ETH: 2185,
-    SOL: 128.5,
+    BTC: 74000,
+    ETH: 1900,
+    SOL: 130,
   };
   return {
     asset: upper,

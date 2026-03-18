@@ -106,26 +106,10 @@ export default function BinaryChatPanel({ market, onClose }: BinaryChatPanelProp
     requestAnimationFrame(() => setIsVisible(true));
   }, []);
 
-  // Seed initial messages
+  // Reset messages on round change
   useEffect(() => {
-    const seed: ChatMessage[] = [];
-    const now = Date.now();
-    for (let i = 0; i < 12; i++) {
-      const msg = generateDemoMessage(asset.symbol, roomId);
-      msg.timestamp = now - (12 - i) * 4000 + Math.random() * 2000;
-      seed.push(msg);
-    }
-    setMessages(seed);
-  }, [asset.symbol, roomId]);
-
-  // Auto-generate new demo messages
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const msg = generateDemoMessage(asset.symbol, roomId);
-      setMessages((prev) => [...prev.slice(-80), msg]);
-    }, 2500 + Math.random() * 3000);
-    return () => clearInterval(interval);
-  }, [asset.symbol, roomId]);
+    setMessages([]);
+  }, [roomId]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -200,10 +184,6 @@ export default function BinaryChatPanel({ market, onClose }: BinaryChatPanelProp
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-bold text-green-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-                {Math.floor(20 + Math.random() * 40)} online
-              </span>
               <button
                 onClick={handleClose}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/60 transition-all hover:bg-white/20 hover:text-white"

@@ -11,30 +11,14 @@ import {
 } from "@/types";
 import { fetchCryptoPrice } from "@/hooks/useCryptoPrice";
 
-// ── Simulated demo wallets for activity feed ──
-const DEMO_WALLETS = [
-  "7xKz..aF9p", "3mRq..bT2x", "9pLw..cK4d", "5nHv..dM8s",
-  "2jBx..eP6w", "8tGs..fR1y", "4vCn..gU3q", "6wDm..hV5r",
-  "1kAf..iW7t", "0sEh..jX9u",
-];
-
 // Fallback prices in case CoinGecko is slow/down
 const FALLBACK_PRICES: Record<CryptoAsset, number> = {
-  BTC: 71000,
-  ETH: 2500,
+  BTC: 74000,
+  ETH: 1900,
   SOL: 130,
 };
 
 const ASSETS: CryptoAsset[] = ["BTC", "ETH", "SOL"];
-
-function randomWallet(): string {
-  return DEMO_WALLETS[Math.floor(Math.random() * DEMO_WALLETS.length)];
-}
-
-function randomBetAmount(): number {
-  const amounts = [0.1, 0.2, 0.5, 1, 2, 5, 10];
-  return amounts[Math.floor(Math.random() * amounts.length)];
-}
 
 function solToLamports(sol: number): number {
   return Math.round(sol * 1_000_000_000);
@@ -65,8 +49,8 @@ function createRound(
     endTime: now + BINARY_ROUND_DURATION,
     lockTime: now + BINARY_ROUND_DURATION - BINARY_LOCK_BUFFER,
     startPrice,
-    upPool: solToLamports(25 + Math.random() * 50),
-    downPool: solToLamports(25 + Math.random() * 50),
+    upPool: 0,
+    downPool: 0,
     totalPool: 0,
     feeCollected: 0,
     bets: [],
@@ -211,32 +195,6 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
             changed = true;
           }
 
-          // Simulate random bets during betting phase
-          if (
-            round.phase === "betting" &&
-            Math.random() < 0.3
-          ) {
-            const side: "up" | "down" = Math.random() > 0.5 ? "up" : "down";
-            const amount = solToLamports(randomBetAmount());
-            const bet: BinaryBet = {
-              id: `${round.id}-bet-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              roundId: round.id,
-              wallet: randomWallet(),
-              side,
-              amount,
-              timestamp: now,
-            };
-
-            const r = updated[asset];
-            updated[asset] = {
-              ...r,
-              bets: [...r.bets.slice(-49), bet],
-              upPool: r.upPool + (side === "up" ? amount : 0),
-              downPool: r.downPool + (side === "down" ? amount : 0),
-              totalPool: r.upPool + r.downPool + amount,
-            };
-            changed = true;
-          }
         }
 
         return changed ? updated : prev;

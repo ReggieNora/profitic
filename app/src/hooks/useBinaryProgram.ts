@@ -12,6 +12,13 @@ const CONFIG_SEED = Buffer.from("binary_config");
 const ROUND_SEED = Buffer.from("binary_round");
 const BET_SEED = Buffer.from("binary_bet");
 
+// Pyth devnet feed addresses for core assets
+export const PYTH_FEEDS: Record<string, PublicKey> = {
+  SOL: new PublicKey("J83w4HKfqxwcq3BEMMkPFSppX3gqekLyLJBexebFVkix"),
+  BTC: new PublicKey("HovQMDrbAgAYPCmHVSrezcSmkMtXSSUsLDFANBmJkuKh"),
+  ETH: new PublicKey("EdVCmQ9FSPcVe5YySXDPCRmc8aDQLKJ9GvYRhgBBTtDH"),
+};
+
 export function useBinaryProgram() {
   const { connection } = useConnection();
   const wallet = useWallet();

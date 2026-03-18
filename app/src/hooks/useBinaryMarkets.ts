@@ -11,7 +11,7 @@ import {
   fetchAssetPrices,
   formatInterval,
 } from "@/lib/tokenDiscovery";
-import { useBinaryProgram, deriveRoundPda, deriveBetPda } from "./useBinaryProgram";
+import { useBinaryProgram, deriveRoundPda, deriveConfigPda, deriveBetPda, PYTH_FEEDS } from "./useBinaryProgram";
 
 // ── Types ──
 
@@ -67,29 +67,14 @@ export interface CompletedRound {
 
 const LOCK_BUFFER_SECONDS = 30; // lock bets 30s before expiry (must match on-chain lock_buffer)
 
-const DEMO_WALLETS = [
-  "7xKz..aF9p", "3mRq..bT2x", "9pLw..cK4d", "5nHv..dM8s",
-  "2jBx..eP6w", "8tGs..fR1y", "4vCn..gU3q", "6wDm..hV5r",
-];
-
-const BET_AMOUNTS = [0.1, 0.2, 0.5, 1, 2, 5, 10];
-
 const FALLBACK_PRICES: Record<string, number> = {
-  bitcoin: 71000,
-  ethereum: 2500,
+  bitcoin: 74000,
+  ethereum: 1900,
   solana: 130,
 };
 
 function solToLamports(sol: number): number {
   return Math.round(sol * 1_000_000_000);
-}
-
-function randomWallet(): string {
-  return DEMO_WALLETS[Math.floor(Math.random() * DEMO_WALLETS.length)];
-}
-
-function randomBetAmount(): number {
-  return BET_AMOUNTS[Math.floor(Math.random() * BET_AMOUNTS.length)];
 }
 
 // Map interval to an offset so each interval gets its own PDA namespace.
@@ -127,8 +112,8 @@ function createMarket(
     endTime: now + interval,
     lockTime: now + interval - LOCK_BUFFER_SECONDS,
     entryPrice,
-    upPool: solToLamports(10 + Math.random() * 40),
-    downPool: solToLamports(10 + Math.random() * 40),
+    upPool: 0,
+    downPool: 0,
     totalPool: 0,
     feeCollected: 0,
     bets: [],
@@ -457,11 +442,8 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
               continue;
             }
 
-            // Fallback: simulate resolution with price drift
-            const basePrice = newPrices[m.asset.symbol] || m.entryPrice;
-            const volatility = m.asset.symbol === "BTC" ? 0.001 : m.asset.symbol === "ETH" ? 0.0015 : 0.003;
-            const drift = basePrice * (Math.random() - 0.5) * 2 * volatility;
-            const finalPrice = basePrice + drift;
+            // Fallback: resolve using current live price vs entry price
+            const finalPrice = newPrices[m.asset.symbol] || m.entryPrice;
             let outcome: "up" | "down" | "refund";
             if (finalPrice > m.entryPrice) outcome = "up";
             else if (finalPrice < m.entryPrice) outcome = "down";
@@ -483,27 +465,6 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             continue;
           }
 
-          // Simulate random bets during betting phase
-          if (m.phase === "betting" && Math.random() < 0.25) {
-            const side: "up" | "down" = Math.random() > 0.5 ? "up" : "down";
-            const amount = solToLamports(randomBetAmount());
-            const bet: MarketBet = {
-              id: `${m.id}-bet-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              wallet: randomWallet(),
-              side,
-              amount,
-              timestamp: now,
-            };
-
-            updated[i] = {
-              ...m,
-              bets: [...m.bets.slice(-29), bet],
-              upPool: m.upPool + (side === "up" ? amount : 0),
-              downPool: m.downPool + (side === "down" ? amount : 0),
-              totalPool: m.totalPool + amount,
-            };
-            changed = true;
-          }
         }
 
         return changed ? updated : prev;
@@ -578,8 +539,49 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         try {
           const [roundPda] = deriveRoundPda(market.asset.symbol, onChainRoundNumber(market.roundNumber, market.interval));
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
+          // Try to fetch the round account; if it doesn't exist, create it first
+          let roundAccount;
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
+          } catch {
+            // Round doesn't exist on-chain — try to create it
+            console.log("Round PDA not found, attempting to create on-chain...");
+            const pythFeed = PYTH_FEEDS[market.asset.symbol];
+            if (!pythFeed) {
+              console.warn("No Pyth feed for", market.asset.symbol, "— falling back to simulation");
+              applySimulatedBet();
+              setTxPending(false);
+              return;
+            }
+            const [configPda] = deriveConfigPda();
+            try {
+              await program.methods
+                .createRound(
+                  market.asset.symbol,
+                  new BN(onChainRoundNumber(market.roundNumber, market.interval)),
+                  new BN(market.interval),
+                  new BN(LOCK_BUFFER_SECONDS),
+                  pythFeed
+                )
+                .accounts({
+                  round: roundPda,
+                  config: configPda,
+                  authority: wallet.publicKey,
+                  systemProgram: SystemProgram.programId,
+                })
+                .rpc();
+              console.log("Round created on-chain successfully");
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
+            } catch (createErr: unknown) {
+              const createMsg = createErr instanceof Error ? createErr.message : String(createErr);
+              console.warn("Failed to create round on-chain:", createMsg);
+              applySimulatedBet();
+              setTxPending(false);
+              return;
+            }
+          }
           const totalBets = (roundAccount.totalBets as number) || 0;
 
           // Pre-flight: check on-chain round status before sending tx
