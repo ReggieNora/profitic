@@ -329,6 +329,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       return { ...prev, [historyKey]: [...existing, completedRound].slice(-50) };
     });
 
+    // Clean up resolved-round tracking for this market
+    resolvedRoundsRef.current.delete(original.id);
+
     // Schedule new round
     const key = `${original.asset.symbol}-${original.interval}`;
     const rn = (roundCounters.current[key] || 1) + 1;
