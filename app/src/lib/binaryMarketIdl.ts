@@ -28,7 +28,8 @@ export type BinaryMarketProgram = {
         { name: "asset"; type: "string" },
         { name: "roundNumber"; type: "u64" },
         { name: "duration"; type: "i64" },
-        { name: "lockBuffer"; type: "i64" }
+        { name: "lockBuffer"; type: "i64" },
+        { name: "startPrice"; type: "u64" }
       ];
     },
     {
@@ -52,7 +53,7 @@ export type BinaryMarketProgram = {
         { name: "pythFeed"; isMut: false; isSigner: false },
         { name: "cranker"; isMut: false; isSigner: true }
       ];
-      args: [];
+      args: [{ name: "endPrice"; type: "u64" }];
     },
     {
       name: "claimWinnings";
@@ -197,6 +198,7 @@ export const BINARY_MARKET_IDL: BinaryMarketProgram = {
         { name: "roundNumber", type: "u64" },
         { name: "duration", type: "i64" },
         { name: "lockBuffer", type: "i64" },
+        { name: "startPrice", type: "u64" },
       ],
     },
     {
@@ -220,7 +222,7 @@ export const BINARY_MARKET_IDL: BinaryMarketProgram = {
         { name: "pythFeed", isMut: false, isSigner: false },
         { name: "cranker", isMut: false, isSigner: true },
       ],
-      args: [],
+      args: [{ name: "endPrice", type: "u64" }],
     },
     {
       name: "claimWinnings",

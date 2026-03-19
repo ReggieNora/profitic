@@ -54,13 +54,15 @@ pub mod binary_market {
     }
 
     /// Create a new round for a given asset. Permissionless — anyone can create
-    /// and pay the rent. The Pyth feed is read on-chain for the start price.
+    /// and pay the rent. If `start_price` > 0 it is used directly (devnet mode);
+    /// otherwise the Pyth feed is read on-chain for the start price.
     pub fn create_round(
         ctx: Context<CreateRound>,
         asset: String,         // "BTC", "ETH", "SOL"
         round_number: u64,
         duration: i64,         // seconds (e.g. 300)
         lock_buffer: i64,      // seconds before end to lock (e.g. 30)
+        start_price: u64,      // 0 → read from Pyth; >0 → use directly (scaled 1e8)
     ) -> Result<()> {
         let clock = Clock::get()?;
         let round = &mut ctx.accounts.round;
@@ -75,14 +77,19 @@ pub mod binary_market {
         round.lock_time = clock.unix_timestamp + duration - lock_buffer;
         round.pyth_feed = ctx.accounts.pyth_feed.key();
 
-        // Read Pyth oracle for start price
-        let price_feed = load_price_feed_from_account_info(&ctx.accounts.pyth_feed)
-            .map_err(|_| BinaryError::InvalidPythFeed)?;
-        let price = price_feed
-            .get_price_no_older_than(clock.unix_timestamp, PYTH_MAX_STALENESS_CREATE)
-            .ok_or(BinaryError::PythPriceTooOld)?;
-        require!(price.price > 0, BinaryError::PythPriceNegative);
-        round.start_price = price.price as u64;
+        if start_price > 0 {
+            // Caller-provided price (devnet / off-chain oracle mode)
+            round.start_price = start_price;
+        } else {
+            // Read Pyth oracle for start price
+            let price_feed = load_price_feed_from_account_info(&ctx.accounts.pyth_feed)
+                .map_err(|_| BinaryError::InvalidPythFeed)?;
+            let price = price_feed
+                .get_price_no_older_than(clock.unix_timestamp, PYTH_MAX_STALENESS_CREATE)
+                .ok_or(BinaryError::PythPriceTooOld)?;
+            require!(price.price > 0, BinaryError::PythPriceNegative);
+            round.start_price = price.price as u64;
+        }
 
         round.end_price = 0;
         round.up_pool = 0;
@@ -163,9 +170,10 @@ pub mod binary_market {
         Ok(())
     }
 
-    /// Resolve the round using Pyth oracle price.
+    /// Resolve the round using Pyth oracle price or a caller-provided price.
     /// Callable by anyone (cranker) after round.end_time.
-    pub fn resolve_round(ctx: Context<ResolveRound>) -> Result<()> {
+    /// If `end_price` > 0, use it directly (devnet mode); otherwise read Pyth.
+    pub fn resolve_round(ctx: Context<ResolveRound>, end_price: u64) -> Result<()> {
         let clock = Clock::get()?;
         let round = &mut ctx.accounts.round;
         let config = &ctx.accounts.config;
@@ -179,14 +187,19 @@ pub mod binary_market {
             BinaryError::AlreadyResolved
         );
 
-        // Read Pyth oracle for end price
-        let price_feed = load_price_feed_from_account_info(&ctx.accounts.pyth_feed)
-            .map_err(|_| BinaryError::InvalidPythFeed)?;
-        let price = price_feed
-            .get_price_no_older_than(clock.unix_timestamp, PYTH_MAX_STALENESS_RESOLVE)
-            .ok_or(BinaryError::PythPriceTooOld)?;
-        require!(price.price > 0, BinaryError::PythPriceNegative);
-        round.end_price = price.price as u64;
+        if end_price > 0 {
+            // Caller-provided price (devnet / off-chain oracle mode)
+            round.end_price = end_price;
+        } else {
+            // Read Pyth oracle for end price
+            let price_feed = load_price_feed_from_account_info(&ctx.accounts.pyth_feed)
+                .map_err(|_| BinaryError::InvalidPythFeed)?;
+            let price = price_feed
+                .get_price_no_older_than(clock.unix_timestamp, PYTH_MAX_STALENESS_RESOLVE)
+                .ok_or(BinaryError::PythPriceTooOld)?;
+            require!(price.price > 0, BinaryError::PythPriceNegative);
+            round.end_price = price.price as u64;
+        }
 
         // Determine outcome
         round.outcome = if round.end_price > round.start_price {

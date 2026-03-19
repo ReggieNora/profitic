@@ -43,6 +43,30 @@ const PYTH_FEEDS: Record<string, string> = {
   ETH: "EdVCmQ9FSPcVe5YySXDPCRmc8aDQLKJ9GvYRhgBBTtDH",
 };
 
+// Pyth Hermes feed IDs for fetching live prices
+const PYTH_HERMES_IDS: Record<string, string> = {
+  BTC: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+  ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+  SOL: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+};
+
+async function fetchPythPrice(asset: string): Promise<number> {
+  const feedId = PYTH_HERMES_IDS[asset];
+  if (!feedId) return 0;
+  try {
+    const resp = await fetch(
+      `https://hermes.pyth.network/v2/updates/price/latest?ids[]=${feedId}`
+    );
+    const data = await resp.json();
+    const parsed = data?.parsed?.[0]?.price;
+    if (!parsed) return 0;
+    const price = Number(parsed.price) * Math.pow(10, Number(parsed.expo));
+    return price > 0 ? price : 0;
+  } catch {
+    return 0;
+  }
+}
+
 const FEE_BPS = 200; // 2%
 
 async function main() {
@@ -103,7 +127,7 @@ async function main() {
             { name: "roundNumber", type: "u64" },
             { name: "duration", type: "i64" },
             { name: "lockBuffer", type: "i64" },
-            { name: "pythFeed", type: "publicKey" },
+            { name: "startPrice", type: "u64" },
           ],
         },
       ],
@@ -196,7 +220,10 @@ async function main() {
       continue;
     }
 
-    console.log(`Creating round ${asset}#${roundNumber}...`);
+    // Fetch current price from Pyth Hermes API
+    const priceUsd = await fetchPythPrice(asset);
+    const startPriceBn = new BN(Math.round(priceUsd * 1e8));
+    console.log(`Creating round ${asset}#${roundNumber} (start: $${priceUsd})...`);
     await sendAndConfirmViaCli(
       program.methods
         .createRound(
@@ -204,6 +231,7 @@ async function main() {
           new BN(roundNumber),
           new BN(300),  // 5 min duration
           new BN(30),   // 30s lock buffer
+          startPriceBn, // caller-provided price
         )
         .accounts({
           round: roundPda,

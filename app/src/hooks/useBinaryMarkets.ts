@@ -387,8 +387,11 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                     const pythFeed = PYTH_FEEDS[m.asset.symbol];
                     if (pythFeed) {
                       const [configPda] = deriveConfigPda();
+                      // Pass current price scaled to 1e8 so we don't need Pyth on-chain
+                      const resolvePrice = newPrices[m.asset.symbol] || m.entryPrice;
+                      const resolvePriceBn = new BN(Math.round(resolvePrice * 1e8));
                       await currentProgram.methods
-                        .resolveRound()
+                        .resolveRound(resolvePriceBn)
                         .accounts({
                           round: roundPda,
                           config: configPda,
@@ -575,6 +578,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
               return;
             }
             const [configPda] = deriveConfigPda();
+            // Pass current price scaled to 1e8 (Pyth expo=-8 format) so the
+            // on-chain program doesn't need to read the (broken) devnet Pyth feed.
+            const startPriceBn = new BN(Math.round(market.entryPrice * 1e8));
             try {
               await program.methods
                 .createRound(
@@ -582,6 +588,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                   new BN(onChainRoundNumber(market.roundNumber, market.interval)),
                   new BN(market.interval),
                   new BN(LOCK_BUFFER_SECONDS),
+                  startPriceBn,
                 )
                 .accounts({
                   round: roundPda,
