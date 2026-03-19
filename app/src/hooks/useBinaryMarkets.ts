@@ -164,6 +164,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   // Track rounds already resolved/attempted to avoid repeated wallet popups
   const resolvedRoundsRef = useRef<Set<string>>(new Set());
 
+  // Track whether on-chain program is available — set false after first InstructionDidNotDeserialize
+  const onChainAvailableRef = useRef(true);
+
   // On-chain program access
   const { program } = useBinaryProgram();
   const wallet = useWallet();
@@ -172,6 +175,8 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   // Refs so the tick loop can access current program/wallet without stale closures
   const programRef = useRef(program);
   programRef.current = program;
+  const walletRef = useRef(wallet);
+  walletRef.current = wallet;
 
 
   // Initialize demo balance from wallet's actual SOL balance
@@ -336,19 +341,20 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       }
       setLivePrices(newPrices);
 
-      // Pre-scan: check on-chain state for rounds that have ended (read-only, no wallet popups)
-      // Resolution transactions are NOT sent automatically — that's a cranker's job.
-      // We only READ on-chain accounts to see if a cranker already resolved the round.
+      // Pre-scan: check on-chain state for rounds that have ended
+      // If on-chain is available, try to resolve rounds (user acts as cranker) and read results.
+      // If on-chain is unavailable, skip entirely and let simulation handle resolution.
       const onChainResolutions: Record<string, BinaryMarket> = {};
       const currentProgram = programRef.current;
-      // Use a snapshot of current markets (read via ref to avoid stale closure)
-      const marketsSnapshot = markets;
-      for (const m of marketsSnapshot) {
-        if ((m.phase === "betting" || m.phase === "locked") && now >= m.endTime) {
-          // Skip rounds we've already checked (prevents repeated RPC calls)
-          if (resolvedRoundsRef.current.has(m.id)) continue;
+      const currentWallet = walletRef.current;
+      if (currentProgram && onChainAvailableRef.current) {
+        // Use a snapshot of current markets (read via ref to avoid stale closure)
+        const marketsSnapshot = markets;
+        for (const m of marketsSnapshot) {
+          if ((m.phase === "betting" || m.phase === "locked") && now >= m.endTime) {
+            // Skip rounds we've already checked (prevents repeated RPC calls)
+            if (resolvedRoundsRef.current.has(m.id)) continue;
 
-          if (currentProgram) {
             try {
               resolvedRoundsRef.current.add(m.id);
               const [roundPda] = deriveRoundPda(m.asset.symbol, onChainRoundNumber(m.roundNumber, m.interval));
@@ -356,14 +362,14 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const roundAccount = await (currentProgram.account as any)["binaryRoundAccount"].fetch(roundPda);
               const outcomeRaw = roundAccount.outcome;
-              const isResolved = outcomeRaw && (outcomeRaw.up || outcomeRaw.down || outcomeRaw.refund);
+              const isResolved = outcomeRaw && (outcomeRaw.up || outcomeRaw.down);
 
               if (isResolved) {
-                console.log(`Round ${m.id} resolved on-chain by cranker, fetching result...`);
+                console.log(`Round ${m.id} resolved on-chain, fetching result...`);
                 const endPriceRaw = (roundAccount.endPrice as { toNumber?: () => number });
                 const endPrice = typeof endPriceRaw?.toNumber === "function" ? endPriceRaw.toNumber() : Number(endPriceRaw);
-                const onChainOutcome: "up" | "down" | "refund" =
-                  outcomeRaw?.up ? "up" : outcomeRaw?.down ? "down" : "refund";
+                const onChainOutcome: "up" | "down" =
+                  outcomeRaw?.up ? "up" : "down";
                 const feeRaw = (roundAccount.feeCollected as { toNumber?: () => number });
                 const feeCollected = typeof feeRaw?.toNumber === "function" ? feeRaw.toNumber() : Number(feeRaw);
 
@@ -375,8 +381,53 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                   feeCollected,
                 };
               } else {
-                // Round exists on-chain but not yet resolved — let simulation handle it
-                resolvedRoundsRef.current.delete(m.id);
+                // Round exists on-chain but not yet resolved — try to resolve as cranker
+                if (currentWallet.publicKey) {
+                  try {
+                    const pythFeed = PYTH_FEEDS[m.asset.symbol];
+                    if (pythFeed) {
+                      const [configPda] = deriveConfigPda();
+                      await currentProgram.methods
+                        .resolveRound()
+                        .accounts({
+                          round: roundPda,
+                          config: configPda,
+                          pythFeed: pythFeed,
+                          cranker: currentWallet.publicKey,
+                        })
+                        .rpc();
+                      console.log(`Round ${m.id} resolved on-chain by us (cranker)`);
+                      // Re-fetch to get the resolved state
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const resolved = await (currentProgram.account as any)["binaryRoundAccount"].fetch(roundPda);
+                      const resOutcome = resolved.outcome;
+                      const resEndPriceRaw = (resolved.endPrice as { toNumber?: () => number });
+                      const resEndPrice = typeof resEndPriceRaw?.toNumber === "function" ? resEndPriceRaw.toNumber() : Number(resEndPriceRaw);
+                      const resFeeRaw = (resolved.feeCollected as { toNumber?: () => number });
+                      const resFee = typeof resFeeRaw?.toNumber === "function" ? resFeeRaw.toNumber() : Number(resFeeRaw);
+
+                      onChainResolutions[m.id] = {
+                        ...m,
+                        phase: "complete",
+                        finalPrice: resEndPrice > 0 ? resEndPrice / 1e8 : (newPrices[m.asset.symbol] || m.entryPrice),
+                        outcome: resOutcome?.up ? "up" : "down",
+                        feeCollected: resFee,
+                      };
+                    } else {
+                      resolvedRoundsRef.current.delete(m.id);
+                    }
+                  } catch (resolveErr: unknown) {
+                    const resolveMsg = resolveErr instanceof Error ? resolveErr.message : String(resolveErr);
+                    if (resolveMsg.includes("InstructionDidNotDeserialize") || resolveMsg.includes("102")) {
+                      onChainAvailableRef.current = false;
+                      console.log("On-chain program unavailable — switching to simulation mode");
+                    }
+                    // Let simulation handle it
+                    resolvedRoundsRef.current.delete(m.id);
+                  }
+                } else {
+                  resolvedRoundsRef.current.delete(m.id);
+                }
               }
             } catch {
               // Round account doesn't exist on-chain — use simulation fallback
@@ -500,8 +551,8 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         applyBet(walletLabel);
       };
 
-      // Try on-chain first if program is available, fall back to simulation
-      if (program && wallet.publicKey) {
+      // Try on-chain first if program is available AND on-chain hasn't been flagged as broken
+      if (program && wallet.publicKey && onChainAvailableRef.current) {
         setTxPending(true);
         setTxError(null);
 
@@ -518,7 +569,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             console.log("Round PDA not found, attempting to create on-chain...");
             const pythFeed = PYTH_FEEDS[market.asset.symbol];
             if (!pythFeed) {
-              console.warn("No Pyth feed for", market.asset.symbol, "— falling back to simulation");
+              console.log("No Pyth feed for", market.asset.symbol, "— using simulation");
               applySimulatedBet();
               setTxPending(false);
               return;
@@ -545,7 +596,14 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
               roundAccount = await (program.account as any)["binaryRoundAccount"].fetch(roundPda);
             } catch (createErr: unknown) {
               const createMsg = createErr instanceof Error ? createErr.message : String(createErr);
-              console.warn("Failed to create round on-chain:", createMsg);
+              // If the program can't deserialize instructions, it's not deployed properly
+              // — disable on-chain for this session so we don't keep hitting wallet popups
+              if (createMsg.includes("InstructionDidNotDeserialize") || createMsg.includes("102")) {
+                console.log("On-chain program unavailable (InstructionDidNotDeserialize) — switching to simulation mode for this session");
+                onChainAvailableRef.current = false;
+              } else {
+                console.log("Failed to create round on-chain:", createMsg);
+              }
               applySimulatedBet();
               setTxPending(false);
               return;
@@ -555,7 +613,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
 
           // Pre-flight: check on-chain round status before sending tx
           const outcomeRaw = roundAccount.outcome;
-          const isResolved = outcomeRaw && (outcomeRaw.up || outcomeRaw.down || outcomeRaw.refund);
+          const isResolved = outcomeRaw && (outcomeRaw.up || outcomeRaw.down);
           if (isResolved) {
             setTxError("Round already resolved — wait for the next round");
             setTxPending(false);
@@ -602,45 +660,52 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             return;
           }
 
-          // Check for known on-chain program errors — surface them to the user
-          const isProgramError = errMsg.includes("BettingLocked")
-            || errMsg.includes("RoundNotBetting")
-            || errMsg.includes("InvalidAmount")
-            || errMsg.includes("AlreadyResolved")
-            || errMsg.includes("InvalidPythFeed")
-            || errMsg.includes("PythPriceTooOld")
-            || errMsg.includes("6001")
-            || errMsg.includes("6000")
-            || errMsg.includes("6002")
-            || errMsg.includes("6004")
-            || errMsg.includes("6007")
-            || errMsg.includes("6008");
-
-          if (isProgramError) {
-            console.error("On-chain bet rejected:", errMsg);
-            setTxError(
-              errMsg.includes("BettingLocked") || errMsg.includes("6001")
-                ? "Betting is locked — round is closing soon"
-                : errMsg.includes("RoundNotBetting") || errMsg.includes("6000")
-                  ? "Round is not in betting phase"
-                  : errMsg.includes("AlreadyResolved") || errMsg.includes("6004")
-                    ? "Round already resolved — wait for the next round"
-                    : errMsg.includes("InvalidPythFeed") || errMsg.includes("6007")
-                      ? "Invalid Pyth price feed"
-                      : errMsg.includes("PythPriceTooOld") || errMsg.includes("6008")
-                        ? "Pyth price is too stale"
-                        : "Bet rejected by program"
-            );
-          } else {
-            // Program not deployed or network issue — fall back to simulation
-            console.warn("On-chain bet unavailable, using simulation:", errMsg);
+          // If the program can't deserialize, disable on-chain for this session
+          if (errMsg.includes("InstructionDidNotDeserialize") || errMsg.includes("Error Number: 102")) {
+            console.log("On-chain program unavailable — switching to simulation mode");
+            onChainAvailableRef.current = false;
             applySimulatedBet();
+          } else {
+            // Check for known on-chain program errors — surface them to the user
+            const isProgramError = errMsg.includes("BettingLocked")
+              || errMsg.includes("RoundNotBetting")
+              || errMsg.includes("InvalidAmount")
+              || errMsg.includes("AlreadyResolved")
+              || errMsg.includes("InvalidPythFeed")
+              || errMsg.includes("PythPriceTooOld")
+              || errMsg.includes("6001")
+              || errMsg.includes("6000")
+              || errMsg.includes("6002")
+              || errMsg.includes("6004")
+              || errMsg.includes("6007")
+              || errMsg.includes("6008");
+
+            if (isProgramError) {
+              console.error("On-chain bet rejected:", errMsg);
+              setTxError(
+                errMsg.includes("BettingLocked") || errMsg.includes("6001")
+                  ? "Betting is locked — round is closing soon"
+                  : errMsg.includes("RoundNotBetting") || errMsg.includes("6000")
+                    ? "Round is not in betting phase"
+                    : errMsg.includes("AlreadyResolved") || errMsg.includes("6004")
+                      ? "Round already resolved — wait for the next round"
+                      : errMsg.includes("InvalidPythFeed") || errMsg.includes("6007")
+                        ? "Invalid Pyth price feed"
+                        : errMsg.includes("PythPriceTooOld") || errMsg.includes("6008")
+                          ? "Pyth price is too stale"
+                          : "Bet rejected by program"
+              );
+            } else {
+              // Program not deployed or network issue — fall back to simulation
+              console.log("On-chain bet unavailable, using simulation:", errMsg);
+              applySimulatedBet();
+            }
           }
         } finally {
           setTxPending(false);
         }
       } else {
-        // No program/wallet — pure simulation
+        // No program/wallet or on-chain unavailable — simulation
         applySimulatedBet();
       }
     },
