@@ -531,12 +531,12 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                   new BN(onChainRoundNumber(market.roundNumber, market.interval)),
                   new BN(market.interval),
                   new BN(LOCK_BUFFER_SECONDS),
-                  pythFeed,
                 )
                 .accounts({
                   round: roundPda,
                   config: configPda,
-                  authority: wallet.publicKey,
+                  payer: wallet.publicKey,
+                  pythFeed: pythFeed,
                   systemProgram: SystemProgram.programId,
                 })
                 .rpc();

@@ -185,12 +185,12 @@ async function main() {
                 new BN(nextRn),
                 new BN(ROUND_DURATION),
                 new BN(LOCK_BUFFER),
-                new PublicKey(PYTH_FEEDS[asset]),
               )
               .accounts({
                 round: nextRoundPda,
                 config: configPda,
-                authority: wallet.publicKey,
+                payer: wallet.publicKey,
+                pythFeed: new PublicKey(PYTH_FEEDS[asset]),
                 systemProgram: SystemProgram.programId,
               })
               .signers([wallet])

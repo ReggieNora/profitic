@@ -204,12 +204,12 @@ async function main() {
           new BN(roundNumber),
           new BN(300),  // 5 min duration
           new BN(30),   // 30s lock buffer
-          new PublicKey(feedAddr)
         )
         .accounts({
           round: roundPda,
           config: configPda,
-          authority: wallet.publicKey,
+          payer: wallet.publicKey,
+          pythFeed: new PublicKey(feedAddr),
           systemProgram: SystemProgram.programId,
         })
         .signers([wallet])
