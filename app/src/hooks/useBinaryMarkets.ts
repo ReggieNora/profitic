@@ -164,8 +164,10 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   // Track rounds already resolved/attempted to avoid repeated wallet popups
   const resolvedRoundsRef = useRef<Set<string>>(new Set());
 
-  // Track whether on-chain program is available — set false after first InstructionDidNotDeserialize
-  const onChainAvailableRef = useRef(true);
+  // Track whether on-chain program is available.
+  // Starts false — the startup probe sets it true only if the config PDA exists.
+  const onChainAvailableRef = useRef(false);
+  const onChainProbed = useRef(false);
 
   // On-chain program access
   const { program } = useBinaryProgram();
@@ -177,6 +179,33 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   programRef.current = program;
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
+
+  // ── Probe on-chain program availability on startup ──
+  // Try to fetch the config PDA once. If it doesn't exist or the program
+  // isn't deployed, disable on-chain mode immediately so we never trigger
+  // wallet popups for transactions that are doomed to fail.
+  useEffect(() => {
+    if (!program || onChainProbed.current) return;
+    onChainProbed.current = true;
+
+    (async () => {
+      try {
+        const [configPda] = deriveConfigPda();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (program.account as any)["binaryConfig"].fetch(configPda);
+        onChainAvailableRef.current = true;
+        console.log("On-chain binary_market program verified — config PDA found");
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Program not deployed, config not initialized, or account deserialization failure
+        // — all mean on-chain mode won't work. Keep onChainAvailableRef as false.
+        console.log(
+          "On-chain binary_market program not available — using simulation mode.",
+          msg.slice(0, 120)
+        );
+      }
+    })();
+  }, [program]);
 
 
   // Initialize demo balance from wallet's actual SOL balance
@@ -712,8 +741,11 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           setTxPending(false);
         }
       } else {
-        // No program/wallet or on-chain unavailable — simulation
+        // No program/wallet or on-chain unavailable — simulation mode
+        setTxPending(true);
+        setTxError(null);
         applySimulatedBet();
+        setTxPending(false);
       }
     },
     [markets, program, wallet.publicKey, demoBalance]
