@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { useBinaryMarkets, UserBet, CompletedRound } from "@/hooks/useBinaryMarkets";
+import { useBinaryMarkets, UserBet, CompletedRound, PendingClaim } from "@/hooks/useBinaryMarkets";
 import { useSolBalance } from "@/hooks/useSolBalance";
 
 function shortenAddress(addr: string): string {
@@ -31,6 +31,8 @@ export default function ProfilePage() {
     claimWinnings,
     txPending,
     markets,
+    pendingClaims,
+    retryClaimWinnings,
   } = useBinaryMarkets();
   const [tab, setTab] = useState<"active" | "history" | "stats">("active");
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -173,6 +175,44 @@ export default function ProfilePage() {
       {claimError && (
         <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">
           {claimError}
+        </div>
+      )}
+
+      {/* Pending on-chain claims */}
+      {pendingClaims.length > 0 && (
+        <div className="mb-4 space-y-2 animate-fade-up">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-yellow-400">
+            Unclaimed Winnings
+          </h3>
+          {pendingClaims.map((claim) => (
+            <div
+              key={claim.marketId}
+              className="flex items-center justify-between rounded-xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3"
+            >
+              <div>
+                <span className="text-sm font-semibold text-white">
+                  {claim.asset} Round #{claim.roundNumber}
+                </span>
+                <span className="ml-2 text-xs text-green-400">
+                  +{claim.payoutSol.toFixed(4)} SOL
+                </span>
+              </div>
+              <button
+                onClick={async () => {
+                  setClaimError(null);
+                  try {
+                    await retryClaimWinnings(claim);
+                  } catch (err: unknown) {
+                    setClaimError(err instanceof Error ? err.message : "Claim failed");
+                  }
+                }}
+                disabled={txPending}
+                className="rounded-lg bg-green-600 px-4 py-1.5 text-xs font-bold text-white transition-all hover:bg-green-500 active:scale-95 disabled:opacity-50"
+              >
+                {txPending ? "Claiming..." : "Claim"}
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

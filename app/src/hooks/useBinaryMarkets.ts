@@ -185,6 +185,17 @@ export interface UserBet {
   marketId: string;
   side: "up" | "down";
   amount: number; // lamports
+  betIndex?: number; // on-chain bet index for claiming (undefined in simulation mode)
+  onChain?: boolean; // true if bet was placed on-chain
+}
+
+export interface PendingClaim {
+  marketId: string;
+  asset: string;
+  roundNumber: number;
+  interval: number;
+  betIndex: number;
+  payoutSol: number;
 }
 
 export interface UseBinaryMarketsReturn {
@@ -201,6 +212,8 @@ export interface UseBinaryMarketsReturn {
   demoBalance: number | null; // SOL — null until wallet balance loaded
   userBets: UserBet[];
   lastPayout: { amount: number; won: boolean } | null;
+  pendingClaims: PendingClaim[];
+  retryClaimWinnings: (claim: PendingClaim) => Promise<void>;
 }
 
 export function useBinaryMarkets(): UseBinaryMarketsReturn {
@@ -215,6 +228,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const [userBets, setUserBets] = useState<UserBet[]>([]);
   const [lastPayout, setLastPayout] = useState<{ amount: number; won: boolean } | null>(null);
   const [txSignature, setTxSignature] = useState<string | null>(null);
+  const [pendingClaims, setPendingClaims] = useState<PendingClaim[]>([]);
   const userBetsRef = useRef(userBets);
   userBetsRef.current = userBets;
   const balanceInitialized = useRef(false);
@@ -348,6 +362,48 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           ? ((original.totalPool * 0.98) * userBet.amount) / winningPool
           : 0;
         const payoutSol = payoutLamports / 1_000_000_000;
+
+        // Auto-claim on-chain if bet was placed on-chain
+        if (userBet.onChain && userBet.betIndex !== undefined) {
+          const currentProgram = programRef.current;
+          const currentWallet = walletRef.current;
+          if (currentProgram && currentWallet.publicKey && onChainAvailableRef.current) {
+            const betIndex = userBet.betIndex;
+            // Fire-and-forget auto-claim — don't block payout UI
+            (async () => {
+              try {
+                const [roundPda] = deriveRoundPda(original.asset.symbol, onChainRoundNumber(original.roundNumber, original.interval));
+                const [betPda] = deriveBetPda(roundPda, currentWallet.publicKey!, betIndex);
+
+                const tx = await currentProgram.methods
+                  .claimWinnings()
+                  .accounts({
+                    round: roundPda,
+                    bet: betPda,
+                    user: currentWallet.publicKey!,
+                    systemProgram: SystemProgram.programId,
+                  })
+                  .rpc();
+
+                console.log(`AUTO_CLAIM_SUCCESS: Claimed on-chain winnings for ${original.id}, tx=${tx}`);
+                setTxSignature(tx);
+              } catch (claimErr: unknown) {
+                const claimMsg = claimErr instanceof Error ? claimErr.message : String(claimErr);
+                console.warn(`AUTO_CLAIM_FAILED: ${original.id} — ${claimMsg}`);
+                // Mark as pending claim so user can retry manually
+                setPendingClaims((prev) => [...prev, {
+                  marketId: original.id,
+                  asset: original.asset.symbol,
+                  roundNumber: original.roundNumber,
+                  interval: original.interval,
+                  betIndex,
+                  payoutSol,
+                }]);
+              }
+            })();
+          }
+        }
+
         setDemoBalance((prev) => (prev ?? 0) + payoutSol);
         setLastPayout({ amount: payoutSol, won: true });
         console.log(`PAYOUT_SENT: Won ${payoutSol.toFixed(4)} SOL for ${original.id} (bet ${betSol} SOL on ${userBet.side})`);
@@ -771,6 +827,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           console.log("Bet placed on-chain:", tx);
           setTxSignature(tx);
           applyBet(wallet.publicKey.toBase58().slice(0, 4) + ".." + wallet.publicKey.toBase58().slice(-4));
+
+          // Track on-chain bet with index for claiming winnings later
+          setUserBets((prev) => [...prev, { marketId, side, amount: lamports, betIndex: totalBets, onChain: true }]);
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
 
@@ -883,5 +942,45 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     [markets, program, wallet.publicKey]
   );
 
-  return { markets, assets, livePrices, placeBet, claimWinnings, roundHistory, loading, txPending, txError, txSignature, demoBalance, userBets, lastPayout };
+  // ── Retry a failed auto-claim ──
+  const retryClaimWinnings = useCallback(
+    async (claim: PendingClaim) => {
+      if (!program || !wallet.publicKey) {
+        throw new Error("Wallet not connected");
+      }
+
+      setTxPending(true);
+      setTxError(null);
+
+      try {
+        const [roundPda] = deriveRoundPda(claim.asset, onChainRoundNumber(claim.roundNumber, claim.interval));
+        const [betPda] = deriveBetPda(roundPda, wallet.publicKey, claim.betIndex);
+
+        const tx = await program.methods
+          .claimWinnings()
+          .accounts({
+            round: roundPda,
+            bet: betPda,
+            user: wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+
+        console.log("Claim retry succeeded:", tx);
+        setTxSignature(tx);
+        // Remove from pending claims
+        setPendingClaims((prev) => prev.filter((c) => c.marketId !== claim.marketId));
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("Claim retry failed:", msg);
+        setTxError(msg);
+        throw err;
+      } finally {
+        setTxPending(false);
+      }
+    },
+    [program, wallet.publicKey]
+  );
+
+  return { markets, assets, livePrices, placeBet, claimWinnings, roundHistory, loading, txPending, txError, txSignature, demoBalance, userBets, lastPayout, pendingClaims, retryClaimWinnings };
 }
