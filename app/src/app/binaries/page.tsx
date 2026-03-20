@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { WalletMultiButton, useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useBinaryMarkets } from "@/hooks/useBinaryMarkets";
 import BinaryMarketCard from "@/components/BinaryMarketCard";
 import { CryptoLogo } from "@/components/CryptoLogos";
@@ -11,16 +11,14 @@ type FilterTab = "all" | "core" | "trending";
 
 export default function BinariesPage() {
   const { connected } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const { markets, assets, livePrices, placeBet, loading, demoBalance, txError, txSignature, lastPayout, userBets } = useBinaryMarkets();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [assetFilter, setAssetFilter] = useState<string | null>(null);
 
-  const [showConnectPrompt, setShowConnectPrompt] = useState(false);
-
   const handleBet = async (marketId: string, side: "up" | "down", amount: number) => {
     if (!connected) {
-      setShowConnectPrompt(true);
-      setTimeout(() => setShowConnectPrompt(false), 3000);
+      setWalletModalVisible(true);
       return;
     }
     await placeBet(marketId, side, amount);
@@ -105,13 +103,6 @@ export default function BinariesPage() {
       {txError && (
         <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/5 p-3 text-center animate-fade-up">
           <p className="text-xs font-bold text-red-400">{txError}</p>
-        </div>
-      )}
-
-      {/* Connect wallet prompt (replaces alert) */}
-      {showConnectPrompt && (
-        <div className="mb-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-3 text-center animate-fade-up">
-          <p className="text-xs font-bold text-yellow-400">Connect your wallet to place bets</p>
         </div>
       )}
 

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useBinaryMarkets, BinaryMarket } from "@/hooks/useBinaryMarkets";
 import BinaryFeedCard from "@/components/BinaryFeedCard";
 import BinaryDetailModal from "@/components/BinaryDetailModal";
@@ -12,6 +13,7 @@ const DEFAULT_INTERVAL = 300; // 5 min default
 
 export default function HomePage() {
   const { connected } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const { markets, livePrices, placeBet, roundHistory, loading, txPending } = useBinaryMarkets();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expandedMarket, setExpandedMarket] = useState<BinaryMarket | null>(null);
@@ -49,7 +51,7 @@ export default function HomePage() {
 
   const handleBet = async (marketId: string, side: "up" | "down", amount: number) => {
     if (!connected) {
-      alert("Connect your wallet to place bets.");
+      setWalletModalVisible(true);
       return;
     }
     await placeBet(marketId, side, amount);
