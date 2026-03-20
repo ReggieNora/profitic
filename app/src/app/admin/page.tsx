@@ -1,115 +1,131 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { PublicKey } from "@solana/web3.js";
+import { BN } from "@coral-xyz/anchor";
 import { Market } from "@/types";
-import { ADMIN_WALLETS, API_URL } from "@/lib/constants";
+import { ADMIN_WALLETS, PROGRAM_ID } from "@/lib/constants";
 import { formatProbability, formatSol, lamportsToSol } from "@/lib/bondingCurve";
-
-function getDemoPendingMarkets(): Market[] {
-  const now = Math.floor(Date.now() / 1000);
-  return [
-    {
-      id: "pending-1",
-      publicKey: "Pend11111111111111111111111111111111111111",
-      question: "Will SOL exceed $200 in January 2026?",
-      description: "Resolves YES if SOL/USD price exceeds $200 on any major exchange during January 2026.",
-      creator: "Creator11111111111111111111111111111111111",
-      resolutionDate: now - 86400 * 2,
-      dataSourceUrl: "https://www.coingecko.com/en/coins/solana",
-      outcome: "unresolved",
-      yesShares: 20000,
-      noShares: 5000,
-      totalVolume: 60_000_000_000,
-      liquidityPool: 30_000_000_000,
-      yesPrice: 0.8,
-      noPrice: 0.2,
-      resolved: false,
-      createdAt: now - 86400 * 35,
-    },
-    {
-      id: "pending-2",
-      publicKey: "Pend22222222222222222222222222222222222222",
-      question: "Will Firedancer go live on Solana mainnet by March 2026?",
-      description: "Resolves YES if the Firedancer validator client is deployed to Solana mainnet before March 31, 2026.",
-      creator: "Creator22222222222222222222222222222222222",
-      resolutionDate: now - 86400,
-      dataSourceUrl: "https://jumpcrypto.com/firedancer/",
-      outcome: "unresolved",
-      yesShares: 10000,
-      noShares: 15000,
-      totalVolume: 40_000_000_000,
-      liquidityPool: 20_000_000_000,
-      yesPrice: 0.4,
-      noPrice: 0.6,
-      resolved: false,
-      createdAt: now - 86400 * 20,
-    },
-  ];
-}
+import { useProgram } from "@/hooks/useProgram";
 
 export default function AdminPage() {
   const { connected, publicKey } = useWallet();
-  const [markets, setMarkets] = useState<Market[]>([]);
+  const { program } = useProgram();
+  const [markets, setMarkets] = useState<Array<{ pubkey: string; data: Record<string, unknown> }>>([]);
   const [loading, setLoading] = useState(false);
   const [resolving, setResolving] = useState<string | null>(null);
   const [resolveForm, setResolveForm] = useState<{
-    [marketId: string]: { outcome: "yes" | "no" | "invalid"; evidenceUrl: string };
+    [marketPubkey: string]: { outcome: "yes" | "no" | "invalid"; evidenceUrl: string };
   }>({});
+  const [txResult, setTxResult] = useState<{ pubkey: string; success: boolean; message: string; txSignature?: string } | null>(null);
 
   const isAdmin =
     connected && publicKey && ADMIN_WALLETS.includes(publicKey.toBase58());
 
-  useEffect(() => {
-    if (isAdmin) {
-      setLoading(true);
-      setTimeout(() => {
-        setMarkets(getDemoPendingMarkets());
-        setLoading(false);
-      }, 500);
+  // Fetch on-chain markets
+  const fetchMarkets = useCallback(async () => {
+    if (!program) return;
+    setLoading(true);
+    try {
+      // Fetch all Market accounts from the program
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allMarkets = await (program.account as any)["market"].all();
+      // Filter to markets past resolution date and not yet resolved
+      const now = Math.floor(Date.now() / 1000);
+      const pending = allMarkets.filter((m: { account: Record<string, unknown> }) => {
+        const status = m.account.status as Record<string, unknown> | undefined;
+        const isActive = status && ("active" in status);
+        const resTs = m.account.resolutionTimestamp as { toNumber?: () => number } | undefined;
+        const resTime = typeof resTs?.toNumber === "function" ? resTs.toNumber() : Number(resTs);
+        return isActive && resTime <= now;
+      });
+      setMarkets(
+        pending.map((m: { publicKey: PublicKey; account: Record<string, unknown> }) => ({
+          pubkey: m.publicKey.toBase58(),
+          data: m.account,
+        }))
+      );
+    } catch (err) {
+      console.error("Failed to fetch markets:", err);
+      // Fallback to demo data if program not deployed
+      setMarkets([]);
+    } finally {
+      setLoading(false);
     }
-  }, [isAdmin]);
+  }, [program]);
 
-  const handleResolve = async (marketId: string) => {
-    const form = resolveForm[marketId];
+  useEffect(() => {
+    if (isAdmin && program) {
+      fetchMarkets();
+    }
+  }, [isAdmin, program, fetchMarkets]);
+
+  const handleResolve = async (marketPubkey: string) => {
+    const form = resolveForm[marketPubkey];
     if (!form || !form.evidenceUrl.trim()) {
-      alert("Please provide an evidence URL.");
       return;
     }
+    if (!program || !publicKey) return;
 
-    setResolving(marketId);
+    setResolving(marketPubkey);
+    setTxResult(null);
+
     try {
-      console.log("Resolving market:", {
-        marketId,
-        outcome: form.outcome,
-        evidenceUrl: form.evidenceUrl,
-        resolver: publicKey?.toBase58(),
-      });
+      // Map outcome to u8: yes=0, no=1, invalid=2
+      const outcomeMap: Record<string, number> = { yes: 0, no: 1, invalid: 2 };
+      const winningOutcome = outcomeMap[form.outcome] ?? 0;
 
-      alert(
-        `Market resolved as ${form.outcome.toUpperCase()}.\n\nIn production, this sends a resolveMarket transaction.`
+      // Derive platform PDA
+      const [platformPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("platform")],
+        new PublicKey(PROGRAM_ID)
       );
 
-      setMarkets((prev) => prev.filter((m) => m.id !== marketId));
+      const marketPk = new PublicKey(marketPubkey);
+
+      const tx = await program.methods
+        .resolveMarket(winningOutcome, form.evidenceUrl.trim())
+        .accounts({
+          platform: platformPda,
+          market: marketPk,
+          admin: publicKey,
+        })
+        .rpc();
+
+      setTxResult({
+        pubkey: marketPubkey,
+        success: true,
+        message: `Market resolved as ${form.outcome.toUpperCase()}!`,
+        txSignature: tx,
+      });
+
+      // Remove from list
+      setMarkets((prev) => prev.filter((m) => m.pubkey !== marketPubkey));
     } catch (err) {
-      console.error("Failed to resolve market:", err);
-      alert("Failed to resolve market. Please try again.");
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Failed to resolve market:", msg);
+      setTxResult({
+        pubkey: marketPubkey,
+        success: false,
+        message: `Resolution failed: ${msg.slice(0, 200)}`,
+      });
     } finally {
       setResolving(null);
     }
   };
 
   const updateResolveForm = (
-    marketId: string,
+    marketPubkey: string,
     field: string,
     value: string
   ) => {
     setResolveForm((prev) => {
-      const existing = prev[marketId] || { outcome: "yes" as const, evidenceUrl: "" };
+      const existing = prev[marketPubkey] || { outcome: "yes" as const, evidenceUrl: "" };
       return {
         ...prev,
-        [marketId]: {
+        [marketPubkey]: {
           ...existing,
           [field]: value,
         },
@@ -160,12 +176,44 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6 pb-24 sm:max-w-5xl sm:px-6 md:pb-6 lg:px-8">
-      <div className="mb-6 animate-fade-up">
-        <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
-        <p className="mt-1 text-sm text-gray-400">
-          Manage markets pending resolution.
-        </p>
+      <div className="mb-6 flex items-center justify-between animate-fade-up">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
+          <p className="mt-1 text-sm text-gray-400">
+            Resolve markets past their resolution date.
+          </p>
+        </div>
+        <button
+          onClick={fetchMarkets}
+          disabled={loading}
+          className="rounded-xl bg-surface-300 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-surface-200 active:scale-95 disabled:opacity-50"
+        >
+          {loading ? "Loading..." : "Refresh"}
+        </button>
       </div>
+
+      {/* Transaction Result */}
+      {txResult && (
+        <div
+          className={`mb-6 rounded-2xl p-4 text-sm font-medium animate-fade-in ${
+            txResult.success
+              ? "bg-green-500/15 text-green-400 border border-green-500/20"
+              : "bg-red-500/15 text-red-400 border border-red-500/20"
+          }`}
+        >
+          <p>{txResult.message}</p>
+          {txResult.txSignature && (
+            <a
+              href={`https://explorer.solana.com/tx/${txResult.txSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 block text-xs text-primary-400 hover:underline"
+            >
+              View transaction on Solana Explorer
+            </a>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-4">
@@ -176,20 +224,38 @@ export default function AdminPage() {
         <div className="rounded-2xl border border-surface-50/50 bg-surface-300 py-12 text-center animate-fade-up">
           <p className="text-sm font-medium text-gray-400">No markets pending resolution</p>
           <p className="mt-1 text-xs text-gray-500">
-            Markets appear here after their resolution date.
+            Markets appear here after their resolution date passes.
+          </p>
+          <p className="mt-3 text-xs text-gray-600">
+            {program ? "Connected to on-chain program" : "Program not available — no markets to resolve"}
           </p>
         </div>
       ) : (
         <div className="space-y-5 stagger-children">
           {markets.map((market) => {
-            const form = resolveForm[market.id] || {
+            const form = resolveForm[market.pubkey] || {
               outcome: "yes",
               evidenceUrl: "",
             };
-            const isCurrentResolving = resolving === market.id;
+            const isCurrentResolving = resolving === market.pubkey;
+            const data = market.data;
+            const question = data.question as string || "Unknown Market";
+            const description = data.description as string || "";
+            const dataSource = data.dataSource as string || "";
+            const resTs = data.resolutionTimestamp as { toNumber?: () => number };
+            const resTime = typeof resTs?.toNumber === "function" ? resTs.toNumber() : Number(resTs);
+            const yesSupply = data.yesSupply as { toNumber?: () => number };
+            const noSupply = data.noSupply as { toNumber?: () => number };
+            const yesCount = typeof yesSupply?.toNumber === "function" ? yesSupply.toNumber() : Number(yesSupply || 0);
+            const noCount = typeof noSupply?.toNumber === "function" ? noSupply.toNumber() : Number(noSupply || 0);
+            const total = yesCount + noCount;
+            const yesPrice = total > 0 ? yesCount / total : 0.5;
+            const noPrice = 1 - yesPrice;
+            const poolBalance = data.poolBalance as { toNumber?: () => number };
+            const pool = typeof poolBalance?.toNumber === "function" ? poolBalance.toNumber() : Number(poolBalance || 0);
 
             return (
-              <div key={market.id} className="rounded-2xl border border-surface-50/50 bg-surface-300 p-5 space-y-4">
+              <div key={market.pubkey} className="rounded-2xl border border-surface-50/50 bg-surface-300 p-5 space-y-4">
                 {/* Market Info */}
                 <div>
                   <div className="mb-2 flex items-center gap-2">
@@ -198,16 +264,17 @@ export default function AdminPage() {
                     </span>
                     <span className="text-[11px] text-gray-500">
                       Ended{" "}
-                      {new Date(
-                        market.resolutionDate * 1000
-                      ).toLocaleDateString()}
+                      {new Date(resTime * 1000).toLocaleDateString()}
                     </span>
                   </div>
                   <h3 className="text-base font-bold text-white">
-                    {market.question}
+                    {question}
                   </h3>
                   <p className="mt-1 text-xs text-gray-400 leading-relaxed">
-                    {market.description}
+                    {description}
+                  </p>
+                  <p className="mt-1 font-mono text-[10px] text-gray-600 truncate">
+                    {market.pubkey}
                   </p>
                 </div>
 
@@ -216,45 +283,49 @@ export default function AdminPage() {
                   <div>
                     <p className="text-[11px] text-gray-500">YES</p>
                     <p className="text-sm font-bold text-green-400">
-                      {formatProbability(market.yesPrice)}
+                      {formatProbability(yesPrice)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[11px] text-gray-500">NO</p>
                     <p className="text-sm font-bold text-red-400">
-                      {formatProbability(market.noPrice)}
+                      {formatProbability(noPrice)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-[11px] text-gray-500">Volume</p>
+                    <p className="text-[11px] text-gray-500">Pool</p>
                     <p className="text-sm font-bold text-white">
-                      {formatSol(lamportsToSol(market.totalVolume))}
+                      {formatSol(lamportsToSol(pool))}
                     </p>
                   </div>
                   <div>
                     <p className="text-[11px] text-gray-500">Source</p>
-                    <a
-                      href={market.dataSourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-accent-400 hover:underline"
-                    >
-                      View
-                    </a>
+                    {dataSource.startsWith("http") ? (
+                      <a
+                        href={dataSource}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-accent-400 hover:underline"
+                      >
+                        View
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-400">{dataSource || "None"}</span>
+                    )}
                   </div>
                 </div>
 
                 {/* Resolution Form */}
                 <div className="rounded-xl bg-surface-400/80 p-4 space-y-3">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                    Resolve
+                    Resolve On-Chain
                   </h4>
                   <div className="flex gap-2">
                     {(["yes", "no", "invalid"] as const).map((o) => (
                       <button
                         key={o}
                         onClick={() =>
-                          updateResolveForm(market.id, "outcome", o)
+                          updateResolveForm(market.pubkey, "outcome", o)
                         }
                         className={`rounded-xl px-4 py-2 text-xs font-bold capitalize transition-all active:scale-95 ${
                           form.outcome === o
@@ -275,7 +346,7 @@ export default function AdminPage() {
                     value={form.evidenceUrl}
                     onChange={(e) =>
                       updateResolveForm(
-                        market.id,
+                        market.pubkey,
                         "evidenceUrl",
                         e.target.value
                       )
@@ -284,12 +355,12 @@ export default function AdminPage() {
                     className="input-field text-sm"
                   />
                   <button
-                    onClick={() => handleResolve(market.id)}
+                    onClick={() => handleResolve(market.pubkey)}
                     disabled={isCurrentResolving || !form.evidenceUrl.trim()}
                     className="btn-primary w-full"
                   >
                     {isCurrentResolving
-                      ? "Resolving..."
+                      ? "Sending transaction..."
                       : `Resolve ${form.outcome.toUpperCase()}`}
                   </button>
                 </div>
