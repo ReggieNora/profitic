@@ -5,6 +5,8 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { CryptoLogo } from "./CryptoLogos";
 
@@ -35,6 +37,8 @@ function jitteredPrice(base: number, symbol: string): number {
 }
 
 export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide, userBetAmount }: Props) {
+  const { connected } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const [betAmount, setBetAmount] = useState("");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [countdown, setCountdown] = useState("");
@@ -118,6 +122,10 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
   const isBettingOpen = market.phase === "betting" && !isLocked;
 
   const handleBet = (side: "up" | "down") => {
+    if (!connected) {
+      setWalletModalVisible(true);
+      return;
+    }
     const amt = parseFloat(betAmount) || 0;
     if (amt <= 0 || !isBettingOpen) return;
     onBet(side, amt);
@@ -355,17 +363,17 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={(e) => { e.stopPropagation(); handleBet("up"); }}
-                disabled={!betAmount || parseFloat(betAmount) <= 0}
+                disabled={connected && (!betAmount || parseFloat(betAmount) <= 0)}
                 className="rounded-xl bg-green-500 py-3 text-sm font-black text-white shadow-lg shadow-green-500/20 hover:bg-green-400 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                UP {upPayout > 0 ? `${upPayout.toFixed(2)}x` : ""}
+                {!connected ? "Connect Wallet" : `UP ${upPayout > 0 ? `${upPayout.toFixed(2)}x` : ""}`}
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); handleBet("down"); }}
-                disabled={!betAmount || parseFloat(betAmount) <= 0}
+                disabled={connected && (!betAmount || parseFloat(betAmount) <= 0)}
                 className="rounded-xl bg-red-500 py-3 text-sm font-black text-white shadow-lg shadow-red-500/20 hover:bg-red-400 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                DOWN {downPayout > 0 ? `${downPayout.toFixed(2)}x` : ""}
+                {!connected ? "Connect Wallet" : `DOWN ${downPayout > 0 ? `${downPayout.toFixed(2)}x` : ""}`}
               </button>
             </div>
             <p className="mt-1.5 text-center text-[9px] text-gray-600">

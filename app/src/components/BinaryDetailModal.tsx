@@ -5,6 +5,8 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from "recharts";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton, useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { PricePoint } from "./BinaryFeedCard";
 import { CryptoLogo } from "./CryptoLogos";
@@ -37,6 +39,8 @@ export default function BinaryDetailModal({
   onBet,
   onClose,
 }: BinaryDetailModalProps) {
+  const { connected } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const [betAmount, setBetAmount] = useState("");
   const [selectedSide, setSelectedSide] = useState<"up" | "down">("up");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
@@ -136,6 +140,10 @@ export default function BinaryDetailModal({
   const isBettingOpen = market.phase === "betting" && !isLocked;
 
   const handleBet = () => {
+    if (!connected) {
+      setWalletModalVisible(true);
+      return;
+    }
     const amt = parseFloat(betAmount) || 0;
     if (amt <= 0 || !isBettingOpen) return;
     onBet(selectedSide, amt);
@@ -434,18 +442,25 @@ export default function BinaryDetailModal({
                 </div>
 
                 {/* Trade button */}
-                <button
-                  onClick={handleBet}
-                  disabled={!betAmount || parseFloat(betAmount) <= 0}
-                  className={`w-full rounded-xl py-3.5 text-sm font-black text-white shadow-lg transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
-                    selectedSide === "up"
-                      ? "bg-green-500 shadow-green-500/20 hover:bg-green-400"
-                      : "bg-red-500 shadow-red-500/20 hover:bg-red-400"
-                  }`}
-                >
-                  {selectedSide === "up" ? "↑" : "↓"} Place {selectedSide.toUpperCase()} Bet
-                  {betAmount && parseFloat(betAmount) > 0 ? ` — ${betAmount} SOL` : ""}
-                </button>
+                {connected ? (
+                  <button
+                    onClick={handleBet}
+                    disabled={!betAmount || parseFloat(betAmount) <= 0}
+                    className={`w-full rounded-xl py-3.5 text-sm font-black text-white shadow-lg transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                      selectedSide === "up"
+                        ? "bg-green-500 shadow-green-500/20 hover:bg-green-400"
+                        : "bg-red-500 shadow-red-500/20 hover:bg-red-400"
+                    }`}
+                  >
+                    {selectedSide === "up" ? "↑" : "↓"} Place {selectedSide.toUpperCase()} Bet
+                    {betAmount && parseFloat(betAmount) > 0 ? ` — ${betAmount} SOL` : ""}
+                  </button>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <p className="text-xs text-gray-500">Connect your wallet to place bets</p>
+                    <WalletMultiButton />
+                  </div>
+                )}
 
                 <p className="mt-2 text-center text-[9px] text-gray-600">
                   2% platform fee &middot; Resolved by {isCoreAsset ? "Pyth Oracle" : "CoinGecko"}

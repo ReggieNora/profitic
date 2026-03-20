@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Market, CRYPTO_ASSETS, CRYPTO_TIMEFRAMES } from "@/types";
 import { getAutoCoverImage } from "@/lib/coverImages";
 import { formatSol, lamportsToSol } from "@/lib/bondingCurve";
@@ -161,6 +163,8 @@ interface FeedCardProps {
 }
 
 export default function FeedCard({ market, index, total }: FeedCardProps) {
+  const { connected } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(() => {
     const hash = market.id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
@@ -432,7 +436,11 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
         {/* YES / NO (or UP / DOWN) action buttons */}
         <div className="flex w-full max-w-sm gap-3">
           <button
-            onClick={(e) => { e.stopPropagation(); setBetSide("yes"); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!connected) { setWalletModalVisible(true); return; }
+              setBetSide("yes");
+            }}
             className="flex-1 rounded-2xl bg-green-500 py-4 text-center text-lg font-black uppercase tracking-wide text-white shadow-lg shadow-green-500/25 transition-all duration-200 hover:bg-green-400 hover:shadow-xl hover:shadow-green-500/30 active:scale-95"
           >
             {market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down" ? (
@@ -445,7 +453,11 @@ export default function FeedCard({ market, index, total }: FeedCardProps) {
             ) : "YES"}
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); setBetSide("no"); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!connected) { setWalletModalVisible(true); return; }
+              setBetSide("no");
+            }}
             className="flex-1 rounded-2xl bg-red-500 py-4 text-center text-lg font-black uppercase tracking-wide text-white shadow-lg shadow-red-500/25 transition-all duration-200 hover:bg-red-400 hover:shadow-xl hover:shadow-red-500/30 active:scale-95"
           >
             {market.marketType === "crypto_updown" && market.cryptoSubtype === "up_down" ? (
