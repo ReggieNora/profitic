@@ -597,8 +597,8 @@ export default function BinaryFeedCard({
 
         {market.phase === "complete" ? (
           <div className="rounded-2xl bg-white/5 p-5 text-center backdrop-blur-sm">
-            <p className={`text-3xl font-black ${market.outcome === "up" ? "text-green-400" : market.outcome === "down" ? "text-red-400" : "text-yellow-400"}`}>
-              {market.outcome === "up" ? "↑ UP WINS" : market.outcome === "down" ? "↓ DOWN WINS" : "REFUND"}
+            <p className={`text-3xl font-black ${market.outcome === "up" ? "text-green-400" : "text-red-400"}`}>
+              {market.outcome === "up" ? "↑ UP WINS" : "↓ DOWN WINS"}
             </p>
             <p className="mt-1 text-xs text-white/40">Next round starting...</p>
           </div>

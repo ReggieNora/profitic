@@ -8,10 +8,50 @@ import {
   TradingAsset,
   CORE_ASSETS,
   discoverTrendingTokens,
-  fetchAssetPrices,
   formatInterval,
 } from "@/lib/tokenDiscovery";
 import { useBinaryProgram, deriveRoundPda, deriveConfigPda, deriveBetPda, PYTH_FEEDS } from "./useBinaryProgram";
+
+// ── Direct Pyth Hermes price fetcher (no CoinGecko, no proxy) ──
+
+const PYTH_HERMES_URL = "https://hermes.pyth.network";
+
+const PYTH_FEED_IDS: Record<string, string> = {
+  BTC: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+  ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+  SOL: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+};
+
+/** Fetch latest prices directly from Pyth Hermes. Returns { BTC: 84750.12, ETH: 2185.5, ... } */
+async function fetchPythPrices(symbols: string[]): Promise<Record<string, number>> {
+  const valid = symbols.filter((s) => s in PYTH_FEED_IDS);
+  if (valid.length === 0) return {};
+
+  try {
+    const idsParam = valid.map((s) => `ids[]=${PYTH_FEED_IDS[s]}`).join("&");
+    const url = `${PYTH_HERMES_URL}/v2/updates/price/latest?${idsParam}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return {};
+
+    const data = await res.json();
+    const result: Record<string, number> = {};
+
+    const feedToSymbol: Record<string, string> = {};
+    for (const s of valid) feedToSymbol[PYTH_FEED_IDS[s]] = s;
+
+    if (Array.isArray(data?.parsed)) {
+      for (const entry of data.parsed) {
+        const sym = feedToSymbol[entry?.id];
+        if (!sym || !entry?.price) continue;
+        const price = Number(entry.price.price) * Math.pow(10, Number(entry.price.expo));
+        if (price > 0) result[sym] = price;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
 
 // ── Types ──
 
@@ -29,7 +69,7 @@ export interface BinaryMarket {
   lockTime: number;
   entryPrice: number;
   finalPrice?: number;
-  outcome?: "up" | "down" | "refund";
+  outcome?: "up" | "down";
   upPool: number; // lamports
   downPool: number;
   totalPool: number;
@@ -53,7 +93,7 @@ export interface CompletedRound {
   roundNumber: number;
   entryPrice: number;
   finalPrice: number;
-  outcome: "up" | "down" | "refund";
+  outcome: "up" | "down";
   upPool: number;
   downPool: number;
   totalPool: number;
@@ -263,17 +303,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       const allAssets = [...CORE_ASSETS, ...trending];
       setAssets(allAssets);
 
-      // Fetch all prices from Pyth (no fallbacks)
-      const allIds = allAssets.map((a) => a.coingeckoId);
-      const fetchedPrices = await fetchAssetPrices(allIds);
-
-      const prices: Record<string, number> = {};
-      for (const asset of allAssets) {
-        const p = fetchedPrices[asset.coingeckoId];
-        if (p && p > 0) {
-          prices[asset.symbol] = p;
-        }
-      }
+      // Fetch all prices directly from Pyth Hermes (no CoinGecko, no proxy)
+      const allSymbols = allAssets.map((a) => a.symbol);
+      const prices = await fetchPythPrices(allSymbols);
       setLivePrices(prices);
 
       // Create markets only for assets where we got a real Pyth price
@@ -310,11 +342,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     const userBet = currentUserBets.find((b) => b.marketId === original.id);
     if (userBet) {
       const betSol = userBet.amount / 1_000_000_000;
-      if (outcome === "refund") {
-        setDemoBalance((prev) => (prev ?? 0) + betSol);
-        setLastPayout({ amount: betSol, won: false });
-        console.log(`PAYOUT_SENT: Refund ${betSol} SOL to user for ${original.id}`);
-      } else if (userBet.side === outcome) {
+      if (userBet.side === outcome) {
         const winningPool = outcome === "up" ? original.upPool : original.downPool;
         const payoutLamports = winningPool > 0
           ? ((original.totalPool * 0.98) * userBet.amount) / winningPool
@@ -392,16 +420,15 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
       priceFetchInFlight.current = true;
       try {
         const currentAssets = assets;
-        const newPrices: Record<string, number> = { ...livePricesRef.current };
-        const allIds = currentAssets.map((a) => a.coingeckoId);
-        const fetched = await fetchAssetPrices(allIds);
-        for (const asset of currentAssets) {
-          const p = fetched[asset.coingeckoId];
-          if (p && p > 0) {
-            newPrices[asset.symbol] = p;
-          }
+        const prevPrices = livePricesRef.current;
+        const symbols = currentAssets.map((a) => a.symbol);
+        const fetched = await fetchPythPrices(symbols);
+        // Merge: keep previous prices for symbols Pyth didn't return
+        const merged: Record<string, number> = { ...prevPrices };
+        for (const [sym, price] of Object.entries(fetched)) {
+          if (price > 0) merged[sym] = price;
         }
-        setLivePrices(newPrices);
+        setLivePrices(merged);
       } finally {
         priceFetchInFlight.current = false;
       }
@@ -500,6 +527,21 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         }
       }
 
+      // Pre-fetch fresh Pyth prices for any markets that need resolution
+      // (must happen BEFORE the synchronous setMarkets callback)
+      const marketsSnapshot = markets;
+      const symbolsNeedingResolution = new Set<string>();
+      for (const m of marketsSnapshot) {
+        if ((m.phase === "betting" || m.phase === "locked") && now >= m.endTime) {
+          if (!onChainResolutions[m.id] && lockedFinalPrices.current[m.id] == null) {
+            symbolsNeedingResolution.add(m.asset.symbol);
+          }
+        }
+      }
+      const freshPrices = symbolsNeedingResolution.size > 0
+        ? await fetchPythPrices(Array.from(symbolsNeedingResolution))
+        : {};
+
       setMarkets((prev) => {
         const updated = [...prev];
         let changed = false;
@@ -532,18 +574,18 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
               continue;
             }
 
-            // PHASE 5: Fetch final price ONCE from Pyth and LOCK it
+            // PHASE 5: Use fresh Pyth price fetched above, or locked price
             const alreadyLocked = lockedFinalPrices.current[m.id];
-            const finalPrice = alreadyLocked ?? newPrices[m.asset.symbol] ?? m.entryPrice;
+            const finalPrice = alreadyLocked
+              ?? freshPrices[m.asset.symbol]
+              ?? newPrices[m.asset.symbol]
+              ?? m.entryPrice;
             // Lock it so it can never change
             lockedFinalPrices.current[m.id] = finalPrice;
             console.log(`PYTH_FINAL_PRICE_LOCKED: ${m.asset.symbol} round #${m.roundNumber} finalPrice=${finalPrice} entryPrice=${m.entryPrice}`);
 
-            // PHASE 1: Determine UP or DOWN
-            let outcome: "up" | "down" | "refund";
-            if (finalPrice > m.entryPrice) outcome = "up";
-            else if (finalPrice < m.entryPrice) outcome = "down";
-            else outcome = "refund";
+            // PHASE 1: Determine UP or DOWN (ties resolve as UP, matching on-chain program)
+            const outcome: "up" | "down" = finalPrice >= m.entryPrice ? "up" : "down";
 
             const fee = Math.round(m.totalPool * 0.02);
 

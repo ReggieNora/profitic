@@ -282,11 +282,9 @@ export default function RoundHistoryPanel({
               <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                 selectedRound.outcome === "up"
                   ? "bg-green-500/20 text-green-400"
-                  : selectedRound.outcome === "down"
-                  ? "bg-red-500/20 text-red-400"
-                  : "bg-yellow-500/20 text-yellow-400"
+                  : "bg-red-500/20 text-red-400"
               }`}>
-                {selectedRound.outcome === "up" ? "↑ UP" : selectedRound.outcome === "down" ? "↓ DOWN" : "REFUND"}
+                {selectedRound.outcome === "up" ? "↑ UP" : "↓ DOWN"}
               </span>
             )}
           </div>

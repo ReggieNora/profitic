@@ -303,8 +303,8 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
       <div className="px-4 pb-4">
         {market.phase === "complete" ? (
           <div className="rounded-xl bg-surface-400/60 p-3 text-center">
-            <p className={`text-xl font-black ${market.outcome === "up" ? "text-green-400" : market.outcome === "down" ? "text-red-400" : "text-yellow-400"}`}>
-              {market.outcome === "up" ? "UP WINS" : market.outcome === "down" ? "DOWN WINS" : "REFUND"}
+            <p className={`text-xl font-black ${market.outcome === "up" ? "text-green-400" : "text-red-400"}`}>
+              {market.outcome === "up" ? "UP WINS" : "DOWN WINS"}
             </p>
             {market.finalPrice != null && (
               <p className="mt-0.5 text-[10px] text-gray-500">

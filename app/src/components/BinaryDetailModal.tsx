@@ -357,8 +357,8 @@ export default function BinaryDetailModal({
             {market.phase === "complete" ? (
               <div className="flex flex-col items-center justify-center h-full py-6">
                 <p className="text-xs text-gray-500">Round Complete</p>
-                <p className={`mt-2 text-3xl font-black ${market.outcome === "up" ? "text-green-400" : market.outcome === "down" ? "text-red-400" : "text-yellow-400"}`}>
-                  {market.outcome === "up" ? "↑ UP WINS" : market.outcome === "down" ? "↓ DOWN WINS" : "REFUND"}
+                <p className={`mt-2 text-3xl font-black ${market.outcome === "up" ? "text-green-400" : "text-red-400"}`}>
+                  {market.outcome === "up" ? "↑ UP WINS" : "↓ DOWN WINS"}
                 </p>
                 {market.finalPrice != null && (
                   <p className="mt-2 text-xs text-gray-500">
