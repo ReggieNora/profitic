@@ -171,4 +171,4 @@ export interface BinaryBet {
 }
 
 export const BINARY_ROUND_DURATION = 300;  // 5 minutes
-export const BINARY_LOCK_BUFFER = 30;      // lock 30s before end
+export const BINARY_LOCK_BUFFER = 10;      // lock 10s before end

@@ -14,9 +14,18 @@ import { fetchCryptoPrice } from "@/hooks/useCryptoPrice";
 // No fallback prices — all prices come exclusively from Pyth Network
 
 const ASSETS: CryptoAsset[] = ["BTC", "ETH", "SOL"];
+const LOCK_BUFFER = 10; // 10 seconds lock period
 
 function solToLamports(sol: number): number {
   return Math.round(sol * 1_000_000_000);
+}
+
+function alignToClockBoundary(nowSec: number, intervalSec: number): { startTime: number; endTime: number; lockTime: number } {
+  const currentBoundary = Math.floor(nowSec / intervalSec) * intervalSec;
+  const startTime = currentBoundary;
+  const endTime = currentBoundary + intervalSec;
+  const lockTime = endTime - LOCK_BUFFER;
+  return { startTime, endTime, lockTime };
 }
 
 // ── Round state manager ──
@@ -33,16 +42,17 @@ function createRound(
   startPrice: number,
   now: number
 ): BinaryRound {
+  const aligned = alignToClockBoundary(now, BINARY_ROUND_DURATION);
   const round: BinaryRound = {
     id: `${asset}-round-${roundNumber}`,
     asset,
     roundNumber,
     phase: "betting",
     duration: BINARY_ROUND_DURATION,
-    lockBuffer: BINARY_LOCK_BUFFER,
-    startTime: now,
-    endTime: now + BINARY_ROUND_DURATION,
-    lockTime: now + BINARY_ROUND_DURATION - BINARY_LOCK_BUFFER,
+    lockBuffer: LOCK_BUFFER,
+    startTime: aligned.startTime,
+    endTime: aligned.endTime,
+    lockTime: aligned.lockTime,
     startPrice,
     upPool: 0,
     downPool: 0,
@@ -50,7 +60,7 @@ function createRound(
     feeCollected: 0,
     bets: [],
   };
-  round.totalPool = round.upPool + round.downPool;
+  console.log(`PYTH_START_PRICE: ${asset} round #${roundNumber} startPrice=${startPrice}`);
   return round;
 }
 
@@ -113,15 +123,13 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
     init();
   }, []);
 
-  // Tick: update phases, resolve rounds, start new ones, simulate bets
-  // No dependency on livePrices — uses ref instead to keep interval stable
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const now = Math.floor(Date.now() / 1000);
+  // Locked final prices per round — once set, never changes
+  const lockedFinalPrices = useRef<Record<string, number>>({});
 
-      // Fetch live prices in parallel
+  // Price refresh — runs every 3s
+  useEffect(() => {
+    const priceInterval = setInterval(async () => {
       const newPrices = await fetchAllPrices();
-      // Merge: keep previous price if new fetch returned 0
       const currentPrices = livePricesRef.current;
       for (const asset of ASSETS) {
         if (newPrices[asset] <= 0) {
@@ -129,6 +137,15 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
         }
       }
       setLivePrices(newPrices);
+    }, 3000);
+    return () => clearInterval(priceInterval);
+  }, []);
+
+  // Tick: update phases, resolve rounds — runs every 1s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Math.floor(Date.now() / 1000);
+      const newPrices = livePricesRef.current;
 
       setRounds((prev) => {
         const updated = { ...prev };
@@ -145,22 +162,25 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
             continue;
           }
 
-          let newPhase: BinaryRoundPhase = round.phase;
-
+          // PHASE 3: Lock at lockTime (last 10 seconds)
           if (round.phase === "betting" && now >= round.lockTime) {
-            newPhase = "locked";
-          }
-          if (
-            (round.phase === "locked" || round.phase === "betting") &&
-            now >= round.endTime
-          ) {
-            newPhase = "resolving";
+            console.log(`ROUND_END_TRIGGERED: ${asset} round #${round.roundNumber} entering LOCKED phase`);
+            updated[asset] = { ...round, phase: "locked" };
+            changed = true;
+            continue;
           }
 
-          if (newPhase === "resolving" && round.phase !== "complete") {
-            const endPrice = newPrices[asset] || round.startPrice;
-            const outcome: "up" | "down" =
-              endPrice >= round.startPrice ? "up" : "down";
+          // PHASE 1: Resolve at endTime
+          if ((round.phase === "locked" || round.phase === "betting") && now >= round.endTime) {
+            console.log(`RESOLVING_ROUND: ${asset} round #${round.roundNumber}`);
+
+            // PHASE 5: Fetch final price ONCE and lock it
+            const alreadyLocked = lockedFinalPrices.current[round.id];
+            const endPrice = alreadyLocked ?? newPrices[asset] ?? round.startPrice;
+            lockedFinalPrices.current[round.id] = endPrice;
+            console.log(`PYTH_FINAL_PRICE_LOCKED: ${asset} round #${round.roundNumber} finalPrice=${endPrice}`);
+
+            const outcome: "up" | "down" = endPrice >= round.startPrice ? "up" : "down";
             const fee = Math.round(round.totalPool * 0.02);
 
             updated[asset] = {
@@ -171,6 +191,11 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
               feeCollected: fee,
             };
             changed = true;
+
+            console.log(`ROUND_RESOLVED: ${asset} round #${round.roundNumber} outcome=${outcome} finalPrice=${endPrice} startPrice=${round.startPrice}`);
+
+            // Clean up locked price
+            delete lockedFinalPrices.current[round.id];
 
             const rn = roundNumbers.current[asset] + 1;
             roundNumbers.current[asset] = rn;
@@ -186,19 +211,15 @@ export function useBinaryRounds(): UseBinaryRoundsReturn {
                 return { ...p, [asset]: nextRound };
               });
             }, 3000);
-          } else if (newPhase !== round.phase) {
-            updated[asset] = { ...round, phase: newPhase };
-            changed = true;
           }
-
         }
 
         return changed ? updated : prev;
       });
-    }, 3000);
+    }, 1000); // 1-second tick for responsive resolution
 
     return () => clearInterval(interval);
-  }, []); // stable interval — no livePrices dependency
+  }, []); // stable interval
 
   const placeBet = useCallback(
     (asset: CryptoAsset, side: "up" | "down", amount: number) => {

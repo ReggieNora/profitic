@@ -170,9 +170,12 @@ export default function BinaryFeedCard({
   const range = maxP - minP;
   const pad = range > 0 ? range * 0.3 : maxP * 0.001 || 1;
 
+  // PHASE 3: betting is only allowed when OPEN and NOT in lock period
+  const isBettingOpen = market.phase === "betting" && !nearLock;
+
   const handleBet = (side: "up" | "down") => {
     const amt = parseFloat(betAmount) || 0;
-    if (amt <= 0 || market.phase !== "betting") return;
+    if (amt <= 0 || !isBettingOpen) return;
     onBet(side, amt);
     setBetAmount("");
   };

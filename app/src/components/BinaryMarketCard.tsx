@@ -57,18 +57,27 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
   const downPayout = upSol > 0 ? (totalSol * 0.98) / downSol : 0;
   const upPct = totalSol > 0 ? (upSol / totalSol) * 100 : 50;
 
-  // Countdown
+  // Countdown with lock detection
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockSecondsLeft, setLockSecondsLeft] = useState<number | null>(null);
+
   useEffect(() => {
     const tick = () => {
-      const remaining = Math.max(0, market.endTime - Math.floor(Date.now() / 1000));
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = Math.max(0, market.endTime - now);
       const m = Math.floor(remaining / 60);
       const s = remaining % 60;
       setCountdown(`${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`);
+
+      // PHASE 3: detect lock period (last 10 seconds)
+      const locked = now >= market.lockTime && remaining > 0;
+      setIsLocked(locked);
+      setLockSecondsLeft(locked ? remaining : null);
     };
     tick();
-    const iv = setInterval(tick, 1000);
+    const iv = setInterval(tick, 200);
     return () => clearInterval(iv);
-  }, [market.endTime]);
+  }, [market.endTime, market.lockTime]);
 
   // Reset chart on new round
   useEffect(() => {
@@ -105,9 +114,12 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
   const range = maxP - minP;
   const pad = range > 0 ? range * 0.2 : maxP * 0.001 || 1;
 
+  // PHASE 3: betting is only allowed when OPEN and NOT in lock period
+  const isBettingOpen = market.phase === "betting" && !isLocked;
+
   const handleBet = (side: "up" | "down") => {
     const amt = parseFloat(betAmount) || 0;
-    if (amt <= 0 || market.phase !== "betting") return;
+    if (amt <= 0 || !isBettingOpen) return;
     onBet(side, amt);
     setBetAmount("");
     setConfirmFlash(side);
@@ -151,15 +163,15 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
         </div>
 
         <div className="flex items-center gap-2">
-          {market.phase === "betting" && (
+          {market.phase === "betting" && !isLocked && (
             <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[9px] font-bold text-green-400">
               <span className="h-1 w-1 rounded-full bg-green-400 animate-pulse" />
               OPEN
             </span>
           )}
-          {market.phase === "locked" && (
-            <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[9px] font-bold text-yellow-400">
-              LOCKED
+          {(market.phase === "locked" || (market.phase === "betting" && isLocked)) && (
+            <span className="flex items-center gap-1 rounded-full bg-yellow-500/15 px-2 py-0.5 text-[9px] font-bold text-yellow-400">
+              LOCKED {lockSecondsLeft !== null && <span className="tabular-nums">{lockSecondsLeft}s</span>}
             </span>
           )}
           {market.phase === "complete" && (
@@ -301,9 +313,12 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
             )}
             <p className="mt-1 text-[10px] text-gray-600">Next round starting...</p>
           </div>
-        ) : market.phase === "locked" || market.phase === "resolving" ? (
+        ) : (market.phase === "locked" || market.phase === "resolving" || isLocked) ? (
           <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-3 text-center">
             <p className="text-xs font-bold text-yellow-400">Bets Locked</p>
+            {lockSecondsLeft !== null && (
+              <p className="mt-1 text-2xl font-black tabular-nums text-yellow-400">{lockSecondsLeft}s</p>
+            )}
             <p className="text-[10px] text-gray-500">Resolving at expiry via Pyth Oracle...</p>
           </div>
         ) : (

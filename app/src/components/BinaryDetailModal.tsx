@@ -117,9 +117,27 @@ export default function BinaryDetailModal({
   const range = maxP - minP;
   const pad = range > 0 ? range * 0.2 : maxP * 0.001 || 1;
 
+  // PHASE 3: Check lock status client-side
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockSecondsLeft, setLockSecondsLeft] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => {
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = Math.max(0, market.endTime - now);
+      const locked = now >= market.lockTime && remaining > 0;
+      setIsLocked(locked);
+      setLockSecondsLeft(locked ? remaining : null);
+    };
+    tick();
+    const iv = setInterval(tick, 200);
+    return () => clearInterval(iv);
+  }, [market.endTime, market.lockTime]);
+
+  const isBettingOpen = market.phase === "betting" && !isLocked;
+
   const handleBet = () => {
     const amt = parseFloat(betAmount) || 0;
-    if (amt <= 0 || market.phase !== "betting") return;
+    if (amt <= 0 || !isBettingOpen) return;
     onBet(selectedSide, amt);
     setBetAmount("");
   };
@@ -349,12 +367,15 @@ export default function BinaryDetailModal({
                 )}
                 <p className="mt-3 text-[10px] text-gray-600">Next round starting shortly...</p>
               </div>
-            ) : market.phase === "locked" || market.phase === "resolving" ? (
+            ) : (market.phase === "locked" || market.phase === "resolving" || isLocked) ? (
               <div className="flex flex-col items-center justify-center h-full py-6">
                 <svg className="h-8 w-8 text-yellow-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
                 <p className="mt-2 text-sm font-bold text-yellow-400">Bets Locked</p>
+                {lockSecondsLeft !== null && (
+                  <p className="mt-1 text-3xl font-black tabular-nums text-yellow-400">{lockSecondsLeft}s</p>
+                )}
                 <p className="mt-1 text-xs text-gray-500">Waiting for round to complete...</p>
               </div>
             ) : (
