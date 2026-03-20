@@ -13,7 +13,7 @@ import { CryptoLogo } from "./CryptoLogos";
 interface Props {
   market: BinaryMarket;
   livePrice: number;
-  onBet: (side: "up" | "down", amount: number) => void;
+  onBet: (side: "up" | "down", amount: number) => void | Promise<void>;
   userBetSide?: "up" | "down" | null;
   userBetAmount?: number; // lamports
 }
@@ -121,17 +121,21 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
   // PHASE 3: betting is only allowed when OPEN and NOT in lock period
   const isBettingOpen = market.phase === "betting" && !isLocked;
 
-  const handleBet = (side: "up" | "down") => {
+  const handleBet = async (side: "up" | "down") => {
     if (!connected) {
       setWalletModalVisible(true);
       return;
     }
     const amt = parseFloat(betAmount) || 0;
     if (amt <= 0 || !isBettingOpen) return;
-    onBet(side, amt);
-    setBetAmount("");
-    setConfirmFlash(side);
-    setTimeout(() => setConfirmFlash(null), 3000);
+    try {
+      await onBet(side, amt);
+      setBetAmount("");
+      setConfirmFlash(side);
+      setTimeout(() => setConfirmFlash(null), 3000);
+    } catch (err) {
+      console.error("Bet failed:", err);
+    }
   };
 
   const formatUsd = (v: number) => {

@@ -259,9 +259,10 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   walletRef.current = wallet;
 
   // ── Probe on-chain program availability on startup ──
-  // Try to fetch the config PDA once. If it doesn't exist or the program
-  // isn't deployed, disable on-chain mode immediately so we never trigger
-  // wallet popups for transactions that are doomed to fail.
+  // Try to fetch the config PDA once. If it exists, great. If it doesn't,
+  // we still enable on-chain mode so the wallet popup triggers — the config
+  // PDA may be created on first use. Only disable on-chain if the program
+  // itself is clearly not deployed (account deserialization / 102 errors).
   useEffect(() => {
     if (!program || onChainProbed.current) return;
     onChainProbed.current = true;
@@ -275,12 +276,28 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         console.log("On-chain binary_market program verified — config PDA found");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Program not deployed, config not initialized, or account deserialization failure
-        // — all mean on-chain mode won't work. Keep onChainAvailableRef as false.
-        console.log(
-          "On-chain binary_market program not available — using simulation mode.",
-          msg.slice(0, 120)
-        );
+        // If the error is specifically about deserialization or the program
+        // not existing at all, disable on-chain mode.
+        const isProgramMissing =
+          msg.includes("InstructionDidNotDeserialize") ||
+          msg.includes("Error Number: 102") ||
+          msg.includes("Program does not exist") ||
+          msg.includes("invalid program id");
+
+        if (isProgramMissing) {
+          console.log(
+            "On-chain binary_market program not deployed — using simulation mode.",
+            msg.slice(0, 120)
+          );
+        } else {
+          // Config PDA not initialized yet, but program may be deployed.
+          // Enable on-chain mode so wallet popups trigger for bets.
+          onChainAvailableRef.current = true;
+          console.log(
+            "Config PDA not found but program may be deployed — enabling on-chain mode.",
+            msg.slice(0, 120)
+          );
+        }
       }
     })();
   }, [program]);
