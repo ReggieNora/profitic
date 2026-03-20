@@ -11,13 +11,16 @@ type FilterTab = "all" | "core" | "trending";
 
 export default function BinariesPage() {
   const { connected } = useWallet();
-  const { markets, assets, livePrices, placeBet, loading, demoBalance, txError, lastPayout, userBets } = useBinaryMarkets();
+  const { markets, assets, livePrices, placeBet, loading, demoBalance, txError, txSignature, lastPayout, userBets } = useBinaryMarkets();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [assetFilter, setAssetFilter] = useState<string | null>(null);
 
+  const [showConnectPrompt, setShowConnectPrompt] = useState(false);
+
   const handleBet = async (marketId: string, side: "up" | "down", amount: number) => {
     if (!connected) {
-      alert("Connect your wallet to place bets.");
+      setShowConnectPrompt(true);
+      setTimeout(() => setShowConnectPrompt(false), 3000);
       return;
     }
     await placeBet(marketId, side, amount);
@@ -102,6 +105,30 @@ export default function BinariesPage() {
       {txError && (
         <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/5 p-3 text-center animate-fade-up">
           <p className="text-xs font-bold text-red-400">{txError}</p>
+        </div>
+      )}
+
+      {/* Connect wallet prompt (replaces alert) */}
+      {showConnectPrompt && (
+        <div className="mb-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-3 text-center animate-fade-up">
+          <p className="text-xs font-bold text-yellow-400">Connect your wallet to place bets</p>
+        </div>
+      )}
+
+      {/* Transaction success link */}
+      {txSignature && (
+        <div className="mb-5 rounded-2xl border border-green-500/20 bg-green-500/5 p-3 text-center animate-fade-up">
+          <p className="text-xs text-green-400">
+            Transaction confirmed{" "}
+            <a
+              href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-bold underline hover:text-green-300"
+            >
+              View on Explorer
+            </a>
+          </p>
         </div>
       )}
 

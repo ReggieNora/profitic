@@ -137,6 +137,7 @@ export interface UseBinaryMarketsReturn {
   loading: boolean;
   txPending: boolean;
   txError: string | null;
+  txSignature: string | null; // last successful on-chain tx signature
   demoBalance: number | null; // SOL — null until wallet balance loaded
   userBets: UserBet[];
   lastPayout: { amount: number; won: boolean } | null;
@@ -153,6 +154,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const [demoBalance, setDemoBalance] = useState<number | null>(null); // null until wallet balance loaded
   const [userBets, setUserBets] = useState<UserBet[]>([]);
   const [lastPayout, setLastPayout] = useState<{ amount: number; won: boolean } | null>(null);
+  const [txSignature, setTxSignature] = useState<string | null>(null);
   const userBetsRef = useRef(userBets);
   userBetsRef.current = userBets;
   const balanceInitialized = useRef(false);
@@ -681,6 +683,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             .rpc();
 
           console.log("Bet placed on-chain:", tx);
+          setTxSignature(tx);
           applyBet(wallet.publicKey.toBase58().slice(0, 4) + ".." + wallet.publicKey.toBase58().slice(-4));
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -781,6 +784,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           .rpc();
 
         console.log("Winnings claimed:", tx);
+        setTxSignature(tx);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("Claim failed:", msg);
@@ -793,5 +797,5 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
     [markets, program, wallet.publicKey]
   );
 
-  return { markets, assets, livePrices, placeBet, claimWinnings, roundHistory, loading, txPending, txError, demoBalance, userBets, lastPayout };
+  return { markets, assets, livePrices, placeBet, claimWinnings, roundHistory, loading, txPending, txError, txSignature, demoBalance, userBets, lastPayout };
 }

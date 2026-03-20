@@ -100,7 +100,20 @@ export default function ProfilePage() {
                 </svg>
               </button>
             </div>
-            <p className="mt-0.5 text-xs text-gray-500">Solana Predictor</p>
+            <div className="mt-0.5 flex items-center gap-2">
+              <p className="text-xs text-gray-500">Solana Predictor</p>
+              <span className="rounded-md bg-yellow-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-yellow-400">
+                Devnet
+              </span>
+            </div>
+            <a
+              href={`https://explorer.solana.com/address/${walletAddr}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 text-[11px] text-primary-400 hover:underline"
+            >
+              View on Solana Explorer
+            </a>
           </div>
         </div>
       </div>

@@ -38,21 +38,27 @@ export default function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-white/[0.03] backdrop-blur-2xl backdrop-saturate-150">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo */}
-        <Link href="/" className="flex items-center transition-opacity active:opacity-70">
-          <Image
-            src="/logo.png"
-            alt="Profitic"
-            width={360}
-            height={120}
-            className="h-24 w-auto"
-            priority
-          />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center transition-opacity active:opacity-70">
+            <Image
+              src="/logo.png"
+              alt="Profitic"
+              width={360}
+              height={120}
+              className="h-24 w-auto"
+              priority
+            />
+          </Link>
+          <span className="rounded-md bg-yellow-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-yellow-400">
+            Devnet
+          </span>
+        </div>
 
         {/* Desktop Navigation */}
         <div className="hidden items-center gap-1 md:flex">
           {[
             { href: "/", label: "Markets" },
+            { href: "/binaries", label: "Binaries" },
             { href: "/farm", label: "Farm" },
             { href: "/predictions", label: "Leaderboard" },
             { href: "/profile", label: "Profile" },
