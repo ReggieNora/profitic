@@ -11,7 +11,7 @@ export const PROGRAM_ID = new PublicKey(
 // Binary market program — update after `anchor deploy`
 export const BINARY_MARKET_PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_BINARY_MARKET_PROGRAM_ID ||
-    "2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj"
+    "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
 );
 
 // Yield farm program

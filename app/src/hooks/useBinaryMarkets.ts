@@ -794,14 +794,14 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             } catch (createErr: unknown) {
               const createMsg = createErr instanceof Error ? createErr.message : String(createErr);
               // If the program can't deserialize instructions, it's not deployed properly
-              // — disable on-chain for this session so we don't keep hitting wallet popups
               if (createMsg.includes("InstructionDidNotDeserialize") || createMsg.includes("102")) {
-                console.log("On-chain program unavailable (InstructionDidNotDeserialize) — switching to simulation mode for this session");
+                console.log("On-chain program unavailable (InstructionDidNotDeserialize) — disabling on-chain for this session");
                 onChainAvailableRef.current = false;
+                setTxError("On-chain program not available — please try again later");
               } else {
-                console.log("Failed to create round on-chain:", createMsg);
+                console.error("Failed to create round on-chain:", createMsg);
+                setTxError(`Failed to create round: ${createMsg.slice(0, 100)}`);
               }
-              applySimulatedBet();
               setTxPending(false);
               return;
             }
@@ -863,9 +863,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
 
           // If the program can't deserialize, disable on-chain for this session
           if (errMsg.includes("InstructionDidNotDeserialize") || errMsg.includes("Error Number: 102")) {
-            console.log("On-chain program unavailable — switching to simulation mode");
+            console.log("On-chain program unavailable — disabling on-chain for this session");
             onChainAvailableRef.current = false;
-            applySimulatedBet();
+            setTxError("On-chain program not available — please try again later");
           } else {
             // Check for known on-chain program errors — surface them to the user
             const isProgramError = errMsg.includes("BettingLocked")
@@ -897,20 +897,24 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                           : "Bet rejected by program"
               );
             } else {
-              // Program not deployed or network issue — fall back to simulation
-              console.log("On-chain bet unavailable, using simulation:", errMsg);
-              applySimulatedBet();
+              // Network or RPC issue — surface the error instead of silently simulating
+              console.error("On-chain bet failed:", errMsg);
+              setTxError(`Transaction failed: ${errMsg.slice(0, 100)}`);
             }
           }
         } finally {
           setTxPending(false);
         }
+      } else if (wallet.publicKey && !onChainAvailableRef.current) {
+        // Wallet is connected but on-chain program is not available
+        setTxError("On-chain program is not deployed — cannot place bet. Please deploy the program first.");
+        console.error("Bet blocked: wallet connected but on-chain program unavailable");
+      } else if (!wallet.publicKey) {
+        // No wallet connected at all — prompt to connect
+        setTxError("Please connect your wallet to place a bet.");
       } else {
-        // No program/wallet or on-chain unavailable — simulation mode
-        setTxPending(true);
-        setTxError(null);
-        applySimulatedBet();
-        setTxPending(false);
+        // Program object not ready yet — should not normally happen
+        setTxError("Wallet program not initialized — please try again.");
       }
     },
     [markets, program, wallet.publicKey, demoBalance]

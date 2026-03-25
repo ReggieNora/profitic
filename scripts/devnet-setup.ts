@@ -26,11 +26,12 @@ if (proxyUrl) {
   const { ProxyAgent, setGlobalDispatcher } = require("undici");
   setGlobalDispatcher(new ProxyAgent(proxyUrl));
 }
-
+// @ts-ignore
+const fetch = global.fetch;
 // ── Config ──
 const PROGRAM_ID = new PublicKey(
   process.env.BINARY_MARKET_PROGRAM_ID ||
-    "2ypR65WzGpXA5tzsMq35neo2pxyN8J1ikmpVWD2qstRj"
+    "5YwWnHt7k3hriR4HkJUZMzoEoQ5Tsbo8RyNo6rHfpXAr"
 );
 
 const CONFIG_SEED = Buffer.from("binary_config");
@@ -95,7 +96,7 @@ async function main() {
   // Load IDL — try from target/idl first, fallback to inline
   let idl: Idl;
   const idlPath = path.join(__dirname, "../target/idl/binary_market.json");
-  if (fs.existsSync(idlPath)) {
+  if (false && fs.existsSync(idlPath)) {
     idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
     console.log("Loaded IDL from", idlPath);
   } else {
