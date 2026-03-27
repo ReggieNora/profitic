@@ -27,6 +27,29 @@ interface MarketCardProps {
 }
 
 export default function MarketCard({ market, featured }: MarketCardProps) {
+  const [yesFlash, setYesFlash] = React.useState<"up" | "down" | null>(null);
+  const [noFlash, setNoFlash] = React.useState<"up" | "down" | null>(null);
+  const lastYesRef = React.useRef(market.yesPrice);
+  const lastNoRef = React.useRef(market.noPrice);
+
+  React.useEffect(() => {
+    if (market.yesPrice !== lastYesRef.current) {
+      setYesFlash(market.yesPrice > lastYesRef.current ? "up" : "down");
+      lastYesRef.current = market.yesPrice;
+      const timer = setTimeout(() => setYesFlash(null), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [market.yesPrice]);
+
+  React.useEffect(() => {
+    if (market.noPrice !== lastNoRef.current) {
+      setNoFlash(market.noPrice > lastNoRef.current ? "up" : "down");
+      lastNoRef.current = market.noPrice;
+      const timer = setTimeout(() => setNoFlash(null), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [market.noPrice]);
+
   const isCrypto = market.marketType === "crypto_updown";
   const isResolved = market.resolved;
   const timeLeft = timeRemaining(market.resolutionDate);
@@ -110,7 +133,9 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
               <div className="text-xs font-semibold uppercase tracking-wider text-green-400/70">
                 {isCrypto && isUpDown ? "Up" : "Yes"}
               </div>
-              <div className="mt-1 text-2xl font-black tabular-nums text-green-400">
+              <div className={`mt-1 text-2xl font-black tabular-nums transition-colors duration-700 ${
+                yesFlash === "up" ? "text-green-400" : yesFlash === "down" ? "text-red-400" : "text-white"
+              }`}>
                 {yesPercent}
                 <span className="text-base font-bold">%</span>
               </div>
@@ -134,7 +159,9 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
               <div className="text-xs font-semibold uppercase tracking-wider text-red-400/70">
                 {isCrypto && isUpDown ? "Down" : "No"}
               </div>
-              <div className="mt-1 text-2xl font-black tabular-nums text-red-400">
+              <div className={`mt-1 text-2xl font-black tabular-nums transition-colors duration-700 ${
+                noFlash === "up" ? "text-green-400" : noFlash === "down" ? "text-red-400" : "text-white"
+              }`}>
                 {noPercent}
                 <span className="text-base font-bold">%</span>
               </div>

@@ -9,6 +9,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { CryptoLogo } from "./CryptoLogos";
 import TrendBackground from "./TrendBackground";
+import TickerPrice from "./TickerPrice";
 
 interface Props {
   market: BinaryMarket;
@@ -208,9 +209,10 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
       </div>
         {/* Price overlay */}
         <div className="absolute left-4 top-2 flex items-center gap-2">
-          <span className="text-lg font-black tabular-nums text-white drop-shadow-lg">
-            {formatUsd(displayPrice)}
-          </span>
+          <TickerPrice 
+            value={displayPrice} 
+            className="text-lg font-black drop-shadow-lg" 
+          />
           <span
             className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
               isAboveEntry ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"

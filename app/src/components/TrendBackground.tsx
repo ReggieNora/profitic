@@ -18,7 +18,7 @@ interface Particle {
   active: boolean;
 }
 
-const POOL_SIZE = 40;
+const POOL_SIZE = 60; // Increased from 40 for more density
 
 export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -34,16 +34,17 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
     flash: 0,
     direction: "flat" as "up" | "down" | "flat",
     lastPrice: price,
+    currentSentiment: sentiment,
   });
 
   useEffect(() => {
     if (price > lastPriceRef.current) {
       animStateRef.current.direction = "up";
-      animStateRef.current.flash = Math.min(1.0, animStateRef.current.flash + 0.6);
+      animStateRef.current.flash = Math.min(1.5, animStateRef.current.flash + 0.8);
       setDirection("up");
     } else if (price < lastPriceRef.current) {
       animStateRef.current.direction = "down";
-      animStateRef.current.flash = Math.min(1.0, animStateRef.current.flash + 0.6);
+      animStateRef.current.flash = Math.min(1.5, animStateRef.current.flash + 0.8);
       setDirection("down");
     }
     lastPriceRef.current = price;
@@ -108,12 +109,14 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
       }
       ctx.closePath();
       
-      // Add a vibrant glow effect
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = dir === "up" ? "rgba(34, 197, 94, 0.8)" : "rgba(239, 68, 68, 0.8)";
+      // Add a subtle glow effect
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = dir === "up" ? "rgba(34, 197, 94, 0.6)" : "rgba(239, 68, 68, 0.6)";
       
-      ctx.fillStyle = dir === "up" ? `rgba(74, 222, 128, ${opacity})` : `rgba(248, 113, 113, ${opacity})`;
-      ctx.fill();
+      // Hollow (Stroked) arrows for performance and distinct look
+      ctx.strokeStyle = dir === "up" ? `rgba(134, 239, 172, ${opacity * 0.9})` : `rgba(252, 165, 165, ${opacity * 0.9})`;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
       
       // Reset shadow for other drawing
       ctx.shadowBlur = 0;
@@ -123,13 +126,14 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
       ctx.clearRect(0, 0, width, height);
 
       // 1. Dynamic Sentiment Background Fill
-      // Smoothly interpolate sentiment
-      setCurrentSentiment((prev) => prev + (sentiment - prev) * 0.05);
+      // Smoothly interpolate sentiment in the ref instead of state
+      animStateRef.current.currentSentiment += (sentiment - animStateRef.current.currentSentiment) * 0.05;
+      const displaySentiment = animStateRef.current.currentSentiment;
       
       // Calculate color blend based on sentiment
       // More vibrant alpha: 0.1 to 0.4
-      const redAlpha = Math.max(0.1, 0.4 * (1 - currentSentiment));
-      const greenAlpha = Math.max(0.1, 0.4 * currentSentiment);
+      const redAlpha = Math.max(0.1, 0.4 * (1 - displaySentiment));
+      const greenAlpha = Math.max(0.1, 0.4 * displaySentiment);
       
       const backgroundGradient = ctx.createLinearGradient(0, 0, 0, height);
       backgroundGradient.addColorStop(0, `rgba(185, 28, 28, ${redAlpha})`); // Deeper Red
@@ -158,29 +162,29 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
         ctx.restore();
       }
 
-      // 3. Slower decay for smoother "fade to clear"
+      // 3. Robust decay for snappy "fade to clear" (Faster than 0.992)
       if (animStateRef.current.flash > 0.001) {
-        animStateRef.current.flash *= 0.985;
+        animStateRef.current.flash *= 0.975; // Snappier decay
       } else if (animStateRef.current.flash > 0) {
         animStateRef.current.flash = 0;
         animStateRef.current.direction = "flat";
         setDirection("flat");
       }
 
-      // Spawn new particles if moving
-      if (internalDir !== "flat") {
-        const spawnRate = internalFlash > 0.4 ? 1 : 3; // Even faster spawn
-        if (frameCount % spawnRate === 0) {
+      // Spawn new particles more frequently based on flash intensity
+      if (internalDir !== "flat" && internalFlash > 0.05) {
+        const spawnProbability = Math.min(1, internalFlash * 0.8); // Higher probality
+        if (frameCount % 2 === 0 && Math.random() < spawnProbability) {
           const inactive = particles.find((p) => !p.active);
           if (inactive) {
             inactive.active = true;
             inactive.x = Math.random() * width;
             inactive.y = internalDir === "up" ? height + 20 : -20;
-            inactive.size = (Math.random() * 10 + 6) * (1 + internalFlash * 0.8); // Larger arrows
-            inactive.speed = (Math.random() * 3 + 2) * (internalDir === "up" ? -1 : 1) * (1 + internalFlash * 1.0); // Faster
-            inactive.maxLife = Math.random() * 100 + 60;
+            inactive.size = (Math.random() * 9 + 6) * (1 + internalFlash * 0.3); // Slightly larger
+            inactive.speed = (Math.random() * 2.5 + 2) * (internalDir === "up" ? -1 : 1) * (1 + internalFlash * 0.4); 
+            inactive.maxLife = (Math.random() * 50 + 30) * (0.6 + internalFlash * 0.4);
             inactive.life = 0;
-            inactive.opacity = Math.random() * 0.6 + 0.4; // High opacity (0.4 to 1.0)
+            inactive.opacity = (Math.random() * 0.4 + 0.4) * Math.min(1, internalFlash + 0.3); // More obvious
           }
         }
       }
@@ -203,7 +207,7 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
 
         if (p.life >= p.maxLife || (p.speed < 0 && p.y < -30) || (p.speed > 0 && p.y > height + 30)) {
           p.active = false;
-        } else if (direction !== "flat") {
+        } else {
           drawArrow(p.x, p.y, p.size, p.speed < 0 ? "up" : "down", currentOpacity);
         }
       }
@@ -218,7 +222,7 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       resizeObserver.disconnect();
     };
-  }, [sentiment, currentSentiment]);
+  }, [sentiment]);
 
   return (
     <canvas

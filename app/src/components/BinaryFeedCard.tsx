@@ -9,6 +9,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { CryptoLogo } from "./CryptoLogos";
 import TrendBackground from "./TrendBackground";
+import TickerPrice from "./TickerPrice";
 
 interface BinaryFeedCardProps {
   market: BinaryMarket;
@@ -359,9 +360,10 @@ export default function BinaryFeedCard({
             {asset.name}
           </h2>
         </div>
-        <span className="text-4xl font-black tabular-nums text-white drop-shadow-lg sm:text-5xl">
-          {formatUsd(displayPrice)}
-        </span>
+        <TickerPrice 
+          value={displayPrice} 
+          className="text-4xl font-black drop-shadow-lg sm:text-5xl" 
+        />
         <div className="mt-2 flex items-center gap-2">
           <span className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-green-400 backdrop-blur-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
