@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, ReferenceLine, CartesianGrid,
+  ResponsiveContainer,
 } from "recharts";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton, useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { PricePoint } from "./BinaryFeedCard";
 import { CryptoLogo } from "./CryptoLogos";
+import TrendBackground from "./TrendBackground";
 
 interface BinaryDetailModalProps {
   market: BinaryMarket;
@@ -160,13 +160,15 @@ export default function BinaryDetailModal({
 
       {/* Modal */}
       <div
-        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-surface-50/50 bg-surface-200 shadow-2xl animate-fade-up"
+        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-surface-50/50 bg-surface-200 shadow-2xl animate-fade-up overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        <TrendBackground price={displayPrice} sentiment={upPct / 100} />
+
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 z-10 rounded-full bg-surface-400 p-2 text-gray-400 transition-all hover:bg-surface-300 hover:text-white"
+          className="absolute right-4 top-4 z-20 rounded-full bg-surface-400 p-2 text-gray-400 transition-all hover:bg-surface-300 hover:text-white"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -174,7 +176,7 @@ export default function BinaryDetailModal({
         </button>
 
         {/* Header */}
-        <div className="border-b border-surface-50/30 px-6 py-4">
+        <div className="relative z-10 border-b border-surface-50/30 px-6 py-4">
           <div className="flex items-center gap-3">
             {isCoreAsset ? (
               <CryptoLogo asset={asset.symbol as "BTC" | "ETH" | "SOL"} size={40} />
@@ -213,7 +215,7 @@ export default function BinaryDetailModal({
         </div>
 
         {/* Price + Chart */}
-        <div className="px-6 pt-4">
+        <div className="relative z-10 px-6 pt-4">
           <div className="flex items-end justify-between mb-3">
             <div>
               <p className="text-[10px] font-semibold uppercase text-gray-500 mb-1">Current Price</p>
@@ -245,66 +247,19 @@ export default function BinaryDetailModal({
             </div>
           </div>
 
-          {/* Large chart */}
-          <div className="h-64 w-full rounded-xl bg-surface-300 p-2">
-            {priceHistory.length < 2 ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-400 border-t-transparent" />
+          {/* Sentiment background fill replaces the large chart */}
+          <div className="h-64 w-full rounded-xl bg-surface-300/30 flex flex-col items-center justify-center border border-white/5">
+            <div className="flex items-center gap-12">
+              <div className="flex flex-col items-center">
+                <span className="text-3xl font-black text-red-500/80">{100 - upPct}%</span>
+                <span className="text-[11px] uppercase font-bold text-gray-600 tracking-wider">Down Pool</span>
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={priceHistory} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                  <defs>
-                    <linearGradient id={`modal-grad-${market.id}-up`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id={`modal-grad-${market.id}-down`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#ef4444" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e2035" />
-                  <XAxis dataKey="time" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} />
-                  <YAxis
-                    domain={[minP - pad, maxP + pad]}
-                    tick={{ fontSize: 10, fill: "#6b7280" }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v: number) => formatUsd(v)}
-                    width={65}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#16182b",
-                      border: "1px solid #2a2d3a",
-                      borderRadius: "0.75rem",
-                      fontSize: 12,
-                      color: "#fff",
-                      padding: "8px 12px",
-                    }}
-                    formatter={(v: number | string) => [formatUsd(Number(v)), "Price"]}
-                    labelStyle={{ color: "#9ca3af" }}
-                  />
-                  <ReferenceLine
-                    y={market.entryPrice}
-                    stroke="#6b7280"
-                    strokeDasharray="6 4"
-                    strokeWidth={1.5}
-                    label={{ value: `Start ${formatUsd(market.entryPrice)}`, fill: "#6b7280", fontSize: 10, position: "left" }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="price"
-                    stroke={isAboveStart ? "#10b981" : "#ef4444"}
-                    strokeWidth={2.5}
-                    fill={isAboveStart ? `url(#modal-grad-${market.id}-up)` : `url(#modal-grad-${market.id}-down)`}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+              <div className="h-16 w-px bg-white/10" />
+              <div className="flex flex-col items-center">
+                <span className="text-3xl font-black text-green-500/80">{upPct}%</span>
+                <span className="text-[11px] uppercase font-bold text-gray-600 tracking-wider">Up Pool</span>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center justify-between text-[10px] text-gray-600 mt-1 mb-3">
@@ -314,7 +269,7 @@ export default function BinaryDetailModal({
         </div>
 
         {/* Two-column: Pool stats + Betting */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-6 pb-4">
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-4 px-6 pb-4">
           {/* Pool stats */}
           <div className="rounded-xl bg-surface-300 p-4">
             <p className="text-[10px] font-semibold uppercase text-gray-500 mb-3">Pool Breakdown</p>
@@ -472,7 +427,7 @@ export default function BinaryDetailModal({
 
         {/* Activity feed */}
         {market.bets.length > 0 && (
-          <div className="border-t border-surface-50/30 px-6 py-4">
+          <div className="relative z-10 border-t border-surface-50/30 px-6 py-4">
             <p className="mb-3 text-[10px] font-semibold uppercase text-gray-500">Live Activity</p>
             <div className="max-h-40 overflow-y-auto space-y-1.5">
               {market.bets

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Market, CRYPTO_ASSETS, CRYPTO_TIMEFRAMES } from "@/types";
 import { formatSol, lamportsToSol } from "@/lib/bondingCurve";
+import TrendBackground from "./TrendBackground";
 
 function useCountdown(resolutionDate: number) {
   const [timeLeft, setTimeLeft] = useState("");
@@ -53,8 +54,9 @@ export default function CryptoMarketCard({ market }: CryptoMarketCardProps) {
   return (
     <Link href={`/market/${market.id}`} className="block">
       <div className={`group relative overflow-hidden rounded-2xl border bg-surface-300 p-5 transition-all duration-300 active:scale-[0.98] hover:shadow-lg ${borderGlow}`}>
+        <TrendBackground price={market.yesPrice} sentiment={yesPercent / 100} />
         {/* Top row: badges */}
-        <div className="mb-3 flex items-center gap-2">
+        <div className="relative z-10 mb-3 flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-400">
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
@@ -70,7 +72,7 @@ export default function CryptoMarketCard({ market }: CryptoMarketCardProps) {
         </div>
 
         {/* Asset + price row */}
-        <div className="mb-4 flex items-center gap-3">
+        <div className="relative z-10 mb-4 flex items-center gap-3">
           <div className={`flex h-11 w-11 items-center justify-center rounded-xl bg-surface-400 text-lg font-black ${assetColor}`}>
             {asset?.icon || market.cryptoAsset}
           </div>
@@ -88,7 +90,7 @@ export default function CryptoMarketCard({ market }: CryptoMarketCardProps) {
         </div>
 
         {/* Timer + status */}
-        <div className="mb-4 flex items-center gap-2">
+        <div className="relative z-10 mb-4 flex items-center gap-2">
           {isResolved ? (
             <span className="inline-flex items-center rounded-full bg-gray-500/15 px-2.5 py-1 text-[11px] font-semibold text-gray-400">
               Resolved {isUpDown ? (market.outcome === "yes" ? "UP" : "DOWN") : market.outcome.toUpperCase()}
@@ -107,7 +109,7 @@ export default function CryptoMarketCard({ market }: CryptoMarketCardProps) {
         </div>
 
         {/* YES/NO (or UP/DOWN) buttons */}
-        <div className="relative flex gap-3">
+        <div className="relative z-10 flex gap-3">
           {/* YES / UP */}
           <button
             onClick={(e) => e.preventDefault()}
@@ -166,7 +168,7 @@ export default function CryptoMarketCard({ market }: CryptoMarketCardProps) {
         </div>
 
         {/* Bottom: liquidity + oracle info */}
-        <div className="mt-3 flex items-center gap-2 text-[10px] text-gray-600">
+        <div className="relative z-10 mt-3 flex items-center gap-2 text-[10px] text-gray-600">
           <span>Liq: {formatSol(lamportsToSol((market.yesPool || 0) + (market.noPool || 0)))}</span>
           <span>&middot;</span>
           <span>2% fee</span>

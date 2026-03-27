@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Market, CRYPTO_ASSETS, CRYPTO_TIMEFRAMES } from "@/types";
 import { formatProbability, formatSol, lamportsToSol } from "@/lib/bondingCurve";
+import TrendBackground from "./TrendBackground";
 
 function timeRemaining(resolutionDate: number): string {
   const now = Date.now() / 1000;
@@ -46,13 +47,14 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
             : "border-surface-50/50 bg-surface-300 p-5 hover:border-primary-500/20 hover:shadow-lg hover:shadow-primary-500/5"
         }`}
       >
+        <TrendBackground price={market.yesPrice} sentiment={yesPercent / 100} />
         {/* Glow effect for featured/hot */}
         {(featured || isHot) && (
           <div className="absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-primary-500/10 blur-3xl" />
         )}
 
         {/* Top row: badges */}
-        <div className="relative mb-4 flex items-center gap-2">
+        <div className="relative z-10 mb-4 flex items-center gap-2">
           {isCrypto && (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-400">
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -89,7 +91,7 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
 
         {/* Question */}
         <h3
-          className={`mb-5 line-clamp-2 font-bold text-white transition-colors group-hover:text-primary-200 ${
+          className={`relative z-10 mb-5 line-clamp-2 font-bold text-white transition-colors group-hover:text-primary-200 ${
             featured ? "text-xl leading-tight" : "text-base leading-snug"
           }`}
         >
@@ -97,7 +99,7 @@ export default function MarketCard({ market, featured }: MarketCardProps) {
         </h3>
 
         {/* Quick bet buttons - the main visual element */}
-        <div className="relative flex gap-3">
+        <div className="relative z-10 flex gap-3">
           {/* YES button */}
           <button
             onClick={(e) => e.preventDefault()}

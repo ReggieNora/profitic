@@ -12,7 +12,7 @@ type FilterTab = "all" | "core" | "trending";
 export default function BinariesPage() {
   const { connected } = useWallet();
   const { setVisible: setWalletModalVisible } = useWalletModal();
-  const { markets, assets, livePrices, placeBet, loading, demoBalance, txError, txSignature, lastPayout, userBets } = useBinaryMarkets();
+  const { markets, assets, livePrices, placeBet, loading, demoBalance, txError, txSignature, lastPayout, userBets, pendingClaims, retryClaimWinnings } = useBinaryMarkets();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [assetFilter, setAssetFilter] = useState<string | null>(null);
 
@@ -96,6 +96,34 @@ export default function BinariesPage() {
               ? `Won ${lastPayout.amount.toFixed(4)} SOL!`
               : `Lost ${lastPayout.amount.toFixed(4)} SOL`}
           </p>
+        </div>
+      )}
+
+      {/* Pending Claims */}
+      {pendingClaims && pendingClaims.length > 0 && (
+        <div className="mb-5 rounded-2xl border border-yellow-500/50 bg-yellow-500/10 p-4 animate-fade-up">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="h-5 w-5 text-yellow-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 className="text-sm font-bold text-yellow-400">Pending Winnings</h3>
+          </div>
+          <div className="space-y-2">
+            {pendingClaims.map((claim) => (
+              <div key={claim.marketId} className="flex items-center justify-between rounded-xl bg-surface-400/50 px-3 py-2">
+                <div>
+                  <p className="text-xs font-bold text-white">{claim.asset} - Round #{claim.roundNumber}</p>
+                  <p className="text-[10px] text-green-400">Won {claim.payoutSol.toFixed(4)} SOL</p>
+                </div>
+                <button
+                  onClick={() => retryClaimWinnings(claim)}
+                  className="rounded-lg bg-yellow-500 px-3 py-1.5 text-xs font-black text-white hover:bg-yellow-400 active:scale-95 transition-all"
+                >
+                  Claim Now
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

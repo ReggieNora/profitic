@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer,
 } from "recharts";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { CryptoLogo } from "./CryptoLogos";
+import TrendBackground from "./TrendBackground";
 
 interface Props {
   market: BinaryMarket;
@@ -146,9 +146,11 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
   };
 
   return (
-    <div className="rounded-2xl border border-surface-50/50 bg-surface-300 overflow-hidden transition-all hover:border-primary-500/20">
+    <div className="relative rounded-2xl border border-surface-50/50 bg-surface-300 overflow-hidden transition-all hover:border-primary-500/20">
+      <TrendBackground price={displayPrice} sentiment={upPct / 100} />
+
       {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-surface-50/30 px-4 py-2.5">
+      <div className="relative z-10 flex items-center justify-between border-b border-surface-50/30 px-4 py-2.5">
         <div className="flex items-center gap-2.5">
           {/* Asset icon */}
           {isCoreAsset ? (
@@ -200,51 +202,10 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
       </div>
 
       {/* Mini chart + price */}
-      <div className="relative">
-        <div className="h-28 w-full">
-          {priceHistory.length < 2 ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-400 border-t-transparent" />
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={priceHistory} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id={`g-${market.id}-up`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id={`g-${market.id}-dn`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#ef4444" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="time" hide />
-                <YAxis domain={[minP - pad, maxP + pad]} hide />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#16182b",
-                    border: "1px solid #2a2d3a",
-                    borderRadius: "0.5rem",
-                    fontSize: 10,
-                    color: "#fff",
-                  }}
-                  formatter={(v: number | string) => [formatUsd(Number(v)), asset.symbol]}
-                />
-                <ReferenceLine y={market.entryPrice} stroke="#6b7280" strokeDasharray="4 3" strokeWidth={1} />
-                <Area
-                  type="monotone"
-                  dataKey="price"
-                  stroke={isAboveEntry ? "#10b981" : "#ef4444"}
-                  strokeWidth={2}
-                  fill={isAboveEntry ? `url(#g-${market.id}-up)` : `url(#g-${market.id}-dn)`}
-                  dot={false}
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+    <div className="relative z-10">
+      <div className="h-28 w-full flex items-center justify-center">
+        {/* Sentiment background fill replaces the chart */}
+      </div>
         {/* Price overlay */}
         <div className="absolute left-4 top-2 flex items-center gap-2">
           <span className="text-lg font-black tabular-nums text-white drop-shadow-lg">
@@ -264,7 +225,7 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
       </div>
 
       {/* Pool bar */}
-      <div className="mx-4 my-2">
+      <div className="relative z-10 mx-4 my-2">
         <div className="flex items-center justify-between mb-1">
           <span className="text-[10px] font-bold text-green-400">
             UP {formatLamports(market.upPool)} SOL
@@ -284,7 +245,7 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
 
       {/* Bet confirmation flash */}
       {confirmFlash && (
-        <div className={`mx-4 mb-2 rounded-xl p-2.5 text-center animate-pulse ${
+        <div className={`relative z-10 mx-4 mb-2 rounded-xl p-2.5 text-center animate-pulse ${
           confirmFlash === "up"
             ? "border border-green-500/30 bg-green-500/10"
             : "border border-red-500/30 bg-red-500/10"
@@ -297,7 +258,7 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
 
       {/* Active bet indicator */}
       {userBetSide && !confirmFlash && market.phase !== "complete" && (
-        <div className={`mx-4 mb-2 flex items-center justify-between rounded-xl px-3 py-2 ${
+        <div className={`relative z-10 mx-4 mb-2 flex items-center justify-between rounded-xl px-3 py-2 ${
           userBetSide === "up"
             ? "border border-green-500/20 bg-green-500/5"
             : "border border-red-500/20 bg-red-500/5"
@@ -312,7 +273,7 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
       )}
 
       {/* Betting UI or result */}
-      <div className="px-4 pb-4">
+      <div className="relative z-10 px-4 pb-4">
         {market.phase === "complete" ? (
           <div className="rounded-xl bg-surface-400/60 p-3 text-center">
             <p className={`text-xl font-black ${market.outcome === "up" ? "text-green-400" : "text-red-400"}`}>

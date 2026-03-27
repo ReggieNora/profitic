@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  AreaChart, Area, YAxis,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer,
 } from "recharts";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { BinaryMarket } from "@/hooks/useBinaryMarkets";
 import { CryptoLogo } from "./CryptoLogos";
+import TrendBackground from "./TrendBackground";
 
 interface BinaryFeedCardProps {
   market: BinaryMarket;
@@ -240,6 +240,9 @@ export default function BinaryFeedCard({
 
   return (
     <div className="relative flex h-full w-full flex-col justify-end overflow-hidden" onClick={handleDoubleTap}>
+      {/* Trend Background animation */}
+      <TrendBackground price={displayPrice} sentiment={upPct / 100} />
+
       {/* Double-tap heart animation */}
       {showHeartAnim && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
@@ -273,15 +276,20 @@ export default function BinaryFeedCard({
                 </div>
               )}
             </div>
-            {/* Conic-gradient timer overlay */}
-            <div
-              className={`absolute inset-0 rounded-full ${nearLock ? "animate-timer-pulse" : ""}`}
-              style={{
-                background: nearLock
-                  ? `conic-gradient(from 0deg, rgba(239,68,68,0.7) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`
-                  : `conic-gradient(from 0deg, rgba(0,0,0,0.65) ${timerPct * 3.6}deg, transparent ${timerPct * 3.6}deg)`,
-              }}
-            />
+            {/* Subtle radial timer ring — replaces the split-line fill */}
+            <svg className="absolute inset-0 h-full w-full -rotate-90 pointer-events-none">
+              <circle
+                cx="200"
+                cy="200"
+                r="198"
+                fill="none"
+                stroke={nearLock ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.15)"}
+                strokeWidth="4"
+                strokeDasharray="1244" // 2 * pi * 198
+                strokeDashoffset={1244 * (1 - timerPct / 100)}
+                className="transition-all duration-300"
+              />
+            </svg>
             {/* Red flash overlay when entering lock zone */}
             {lockFlash && (
               <div className="absolute inset-0 rounded-full bg-red-500/40 animate-lock-flash" />
@@ -298,57 +306,10 @@ export default function BinaryFeedCard({
         </div>
       </div>
 
-      {/* Background chart */}
-      <div className="absolute inset-0 z-[1] pointer-events-none">
-        {priceHistory.length >= 2 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={priceHistory} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id={`feed-grad-${market.id}-up`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
-                  <stop offset="60%" stopColor="#10b981" stopOpacity={0.08} />
-                  <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id={`feed-grad-${market.id}-down`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#ef4444" stopOpacity={0.35} />
-                  <stop offset="60%" stopColor="#ef4444" stopOpacity={0.08} />
-                  <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <YAxis domain={[minP - pad, maxP + pad]} hide />
-              <ReferenceLine
-                y={market.entryPrice}
-                stroke="#facc15"
-                strokeDasharray="10 6"
-                strokeWidth={2.5}
-                strokeOpacity={0.8}
-                label={{
-                  value: `▸ START ${formatUsd(market.entryPrice)}`,
-                  fill: "#facc15",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  position: "insideTopLeft",
-                  offset: 6,
-                }}
-              />
-              <Area
-                type="monotone"
-                dataKey="price"
-                stroke={isAboveStart ? "#10b981" : "#ef4444"}
-                strokeWidth={2.5}
-                fill={isAboveStart ? `url(#feed-grad-${market.id}-up)` : `url(#feed-grad-${market.id}-down)`}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-400 border-t-transparent" />
-          </div>
-        )}
-        {/* Overlay gradient for readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
+      {/* Sentiment background fill replaces the chart */}
+      <div className="absolute inset-0 z-0 pointer-events-none opacity-20">
+        <div className="flex h-full w-full items-center justify-center">
+        </div>
       </div>
 
 

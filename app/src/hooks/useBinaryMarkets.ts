@@ -689,7 +689,9 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
   const placeBet = useCallback(
     async (marketId: string, side: "up" | "down", amount: number) => {
       const market = markets.find((m) => m.id === marketId);
-      if (!market || market.phase !== "betting") return;
+      if (!market || market.phase !== "betting") {
+        throw new Error("Market not open for betting");
+      }
 
       const lamports = solToLamports(amount);
 
@@ -725,7 +727,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         // PHASE 2: Check sufficient balance
         if (demoBalance !== null && betSol > demoBalance) {
           setTxError("Insufficient balance");
-          return;
+          throw new Error("Insufficient balance");
         }
 
         // PHASE 2: Immediately deduct from balance
@@ -803,7 +805,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
                 setTxError(`Failed to create round: ${createMsg.slice(0, 100)}`);
               }
               setTxPending(false);
-              return;
+              throw createErr;
             }
           }
           const totalBets = (roundAccount.totalBets as number) || 0;
@@ -814,7 +816,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
           if (isResolved) {
             setTxError("Round already resolved — wait for the next round");
             setTxPending(false);
-            return;
+            throw new Error("Round already resolved");
           }
 
           const lockTime = (roundAccount.lockTime as { toNumber?: () => number });
@@ -824,7 +826,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             // Within 2s of lock or past it — reject client-side to avoid on-chain error
             setTxError("Betting is locked — round is closing soon");
             setTxPending(false);
-            return;
+            throw new Error("Betting is locked");
           }
 
           const [betPda] = deriveBetPda(roundPda, wallet.publicKey, totalBets);
@@ -858,7 +860,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
             console.log("User rejected transaction signing");
             setTxError("Transaction cancelled");
             setTxPending(false);
-            return;
+            throw new Error("Transaction cancelled");
           }
 
           // If the program can't deserialize, disable on-chain for this session
@@ -902,6 +904,7 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
               setTxError(`Transaction failed: ${errMsg.slice(0, 100)}`);
             }
           }
+          throw err;
         } finally {
           setTxPending(false);
         }
@@ -909,12 +912,15 @@ export function useBinaryMarkets(): UseBinaryMarketsReturn {
         // Wallet is connected but on-chain program is not available
         setTxError("On-chain program is not deployed — cannot place bet. Please deploy the program first.");
         console.error("Bet blocked: wallet connected but on-chain program unavailable");
+        throw new Error("On-chain program unavailable");
       } else if (!wallet.publicKey) {
         // No wallet connected at all — prompt to connect
         setTxError("Please connect your wallet to place a bet.");
+        throw new Error("Wallet not connected");
       } else {
         // Program object not ready yet — should not normally happen
         setTxError("Wallet program not initialized — please try again.");
+        throw new Error("Wallet program not initialized");
       }
     },
     [markets, program, wallet.publicKey, demoBalance]
