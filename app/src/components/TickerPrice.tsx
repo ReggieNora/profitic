@@ -59,28 +59,44 @@ export default function TickerPrice({ value, className = "" }: TickerPriceProps)
   }
 
   return (
-    <div className={`flex items-center tabular-nums whitespace-nowrap ${className}`}>
-      {currentDigits.map((digit, i) => {
-        const isChanged = changedIndices.has(i);
-        return (
-          <span
-            key={`${i}-${isChanged ? state.version : "stable"}`}
-            className={`inline-block transition-all duration-300 ${
-              isChanged && state.flash === "up" 
-                ? "text-green-400 animate-ticker-up" 
-                : isChanged && state.flash === "down" 
-                ? "text-red-400 animate-ticker-down" 
-                : "text-white"
-            }`}
-            style={{ 
-              animationDelay: `${(currentDigits.length - 1 - i) * 10}ms`,
-              transitionDelay: state.flash ? "0ms" : "500ms"
-            }}
-          >
-            {digit}
+    <div className={`relative flex items-center tabular-nums whitespace-nowrap font-digital ${className}`}>
+      
+      {/* Background Unlit 14-Segments (renders ~ behind numbers and $) */}
+      <div 
+        className="absolute inset-0 flex items-center text-white pointer-events-none select-none" 
+        style={{ textShadow: 'none', WebkitFontSmoothing: 'none' }}
+        aria-hidden="true"
+      >
+        {currentDigits.map((digit, i) => (
+          <span key={`bg-${i}`} className={`inline-block ${/[0-9\$]/.test(digit) ? 'opacity-15' : 'opacity-0'}`}>
+            {/[0-9\$]/.test(digit) ? '~' : digit}
           </span>
-        );
-      })}
+        ))}
+      </div>
+
+      {/* Foreground Lit Digits */}
+      <div className="relative flex items-center z-10 text-white">
+        {currentDigits.map((digit, i) => {
+          const isChanged = changedIndices.has(i);
+          return (
+            <span
+              key={`${i}-${isChanged ? state.version : "stable"}`}
+              className={`inline-block transition-colors duration-75 ${
+                isChanged && state.flash === "up" 
+                  ? "text-green-400 animate-[digital-flicker_0.4s_ease-in-out]" 
+                  : isChanged && state.flash === "down" 
+                  ? "text-red-400 animate-[digital-flicker_0.4s_ease-in-out]" 
+                  : "text-white"
+              }`}
+              style={{
+                textShadow: "0 0 8px currentColor, 0 0 16px currentColor",
+              }}
+            >
+              {digit}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
