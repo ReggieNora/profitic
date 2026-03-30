@@ -62,6 +62,18 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
   const downPayout = upSol > 0 ? (totalSol * 0.98) / downSol : 0;
   const upPct = totalSol > 0 ? (upSol / totalSol) * 100 : 50;
 
+  // Round reset and rewind animations
+  const [isRewinding, setIsRewinding] = useState(false);
+  const prevMarketIdRef = useRef(market.id);
+
+  useEffect(() => {
+    if (prevMarketIdRef.current !== market.id) {
+      setIsRewinding(true);
+      setTimeout(() => setIsRewinding(false), 1500);
+      prevMarketIdRef.current = market.id;
+    }
+  }, [market.id]);
+
   // Countdown with lock detection
   const [isLocked, setIsLocked] = useState(false);
   const [lockSecondsLeft, setLockSecondsLeft] = useState<number | null>(null);
@@ -148,7 +160,22 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
 
   return (
     <div className="relative rounded-2xl border border-surface-50/50 bg-surface-300 overflow-hidden transition-all hover:border-primary-500/20">
-      <TrendBackground price={displayPrice} sentiment={upPct / 100} />
+      <TrendBackground price={displayPrice} sentiment={upPct / 100} isRewinding={isRewinding} />
+
+      {/* Absolute overlay for stylistic WIN popup */}
+      {market.phase === "complete" && !isRewinding && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-surface-300/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className={`text-6xl font-black tracking-widest uppercase mb-2 drop-shadow-[0_4px_20px_rgba(0,0,0,0.5)] ${market.outcome === "up" ? "text-green-400" : "text-red-400"} animate-bounce`}>
+            {market.outcome} WINS
+          </div>
+          <div className="text-sm font-bold text-white/90 bg-surface-400/80 px-4 py-2 rounded-full backdrop-blur-md border border-white/10 shadow-xl">
+            Final: {formatUsd(market.finalPrice!)}
+          </div>
+          <div className="absolute bottom-6 text-[10px] text-white/50 uppercase tracking-widest animate-pulse">
+            Preparing next round...
+          </div>
+        </div>
+      )}
 
       {/* Header bar */}
       <div className="relative z-10 flex items-center justify-between border-b border-surface-50/30 px-4 py-2.5">
@@ -202,9 +229,11 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
         </div>
       </div>
 
-      {/* Mini chart + price */}
-    <div className="relative z-10">
-      <div className="h-28 w-full flex items-center justify-center">
+      {/* Content wrapper that fades/shrinks during rewind */}
+      <div className={`relative z-10 transition-all duration-700 ${isRewinding ? "opacity-0 scale-95 pointer-events-none" : "opacity-100 scale-100"}`}>
+        {/* Mini chart + price */}
+        <div className="relative z-10">
+          <div className="h-28 w-full flex items-center justify-center">
         {/* Sentiment background fill replaces the chart */}
       </div>
         {/* Price overlay */}
@@ -276,25 +305,15 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
 
       {/* Betting UI or result */}
       <div className="relative z-10 px-4 pb-4">
-        {market.phase === "complete" ? (
-          <div className="rounded-xl bg-surface-400/60 p-3 text-center">
-            <p className={`text-xl font-black ${market.outcome === "up" ? "text-green-400" : "text-red-400"}`}>
-              {market.outcome === "up" ? "UP WINS" : "DOWN WINS"}
-            </p>
-            {market.finalPrice != null && (
-              <p className="mt-0.5 text-[10px] text-gray-500">
-                Final: {formatUsd(market.finalPrice)} vs Entry: {formatUsd(market.entryPrice)}
-              </p>
-            )}
-            <p className="mt-1 text-[10px] text-gray-600">Next round starting...</p>
-          </div>
-        ) : (market.phase === "locked" || market.phase === "resolving" || isLocked) ? (
+        {(market.phase === "locked" || market.phase === "resolving" || isLocked || market.phase === "complete") ? (
           <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-3 text-center">
             <p className="text-xs font-bold text-yellow-400">Bets Locked</p>
-            {lockSecondsLeft !== null && (
+            {lockSecondsLeft !== null && market.phase !== "complete" && (
               <p className="mt-1 text-2xl font-black tabular-nums text-yellow-400">{lockSecondsLeft}s</p>
             )}
-            <p className="text-[10px] text-gray-500">Resolving at expiry via Pyth Oracle...</p>
+            <p className="text-[10px] text-gray-500">
+              {market.phase === "complete" ? "Round Complete" : "Resolving at expiry via Pyth Oracle..."}
+            </p>
           </div>
         ) : (
           <>
@@ -348,6 +367,7 @@ export default function BinaryMarketCard({ market, livePrice, onBet, userBetSide
             </p>
           </>
         )}
+      </div>
       </div>
     </div>
   );

@@ -234,7 +234,7 @@ export default function BinariesPage() {
                   .filter((m) => m.asset.type === "core")
                   .map((m) => (
                     <BinaryMarketCard
-                      key={m.id}
+                      key={`${m.asset.symbol}-${m.interval}`}
                       market={m}
                       livePrice={livePrices[m.asset.symbol] || 0}
                       onBet={(side, amt) => handleBet(m.id, side, amt)}
@@ -262,7 +262,7 @@ export default function BinariesPage() {
                   .filter((m) => m.asset.type === "pumpfun")
                   .map((m) => (
                     <BinaryMarketCard
-                      key={m.id}
+                      key={`${m.asset.symbol}-${m.interval}`}
                       market={m}
                       livePrice={livePrices[m.asset.symbol] || 0}
                       onBet={(side, amt) => handleBet(m.id, side, amt)}
@@ -283,7 +283,7 @@ export default function BinariesPage() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {visible.map((m) => (
                   <BinaryMarketCard
-                    key={m.id}
+                    key={`${m.asset.symbol}-${m.interval}`}
                     market={m}
                     livePrice={livePrices[m.asset.symbol] || 0}
                     onBet={(side, amt) => handleBet(m.id, side, amt)}

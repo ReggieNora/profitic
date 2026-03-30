@@ -71,12 +71,25 @@ export default function BinaryFeedCard({
   const [nearLock, setNearLock] = useState(false);
   const [lockCountdown, setLockCountdown] = useState<number | null>(null);
   const [lockFlash, setLockFlash] = useState(false);
+  const [isBreathing, setIsBreathing] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount] = useState(() => 80 + Math.floor(Math.random() * 200));
   const [shared, setShared] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
   const lastApiPrice = useRef(0);
   const lastTapRef = useRef(0);
+
+  // Round reset and rewind animations
+  const [isRewinding, setIsRewinding] = useState(false);
+  const prevMarketIdRef = useRef(market.id);
+
+  useEffect(() => {
+    if (prevMarketIdRef.current !== market.id) {
+      setIsRewinding(true);
+      setTimeout(() => setIsRewinding(false), 1500);
+      prevMarketIdRef.current = market.id;
+    }
+  }, [market.id]);
 
   const { asset } = market;
   const isCoreAsset = asset.type === "core" && (asset.symbol === "BTC" || asset.symbol === "ETH" || asset.symbol === "SOL");
@@ -120,6 +133,8 @@ export default function BinaryFeedCard({
         setLockFlash(true);
         setTimeout(() => setLockFlash(false), 600);
       }
+
+      setIsBreathing(remaining > 0 && remaining <= 30);
     };
     tick();
     const interval = setInterval(tick, 200);
@@ -242,7 +257,7 @@ export default function BinaryFeedCard({
   return (
     <div className="relative flex h-full w-full flex-col justify-end overflow-hidden" onClick={handleDoubleTap}>
       {/* Trend Background animation */}
-      <TrendBackground price={displayPrice} sentiment={upPct / 100} />
+      <TrendBackground price={displayPrice} sentiment={upPct / 100} isRewinding={isRewinding} />
 
       {/* Double-tap heart animation */}
       {showHeartAnim && (
@@ -253,12 +268,13 @@ export default function BinaryFeedCard({
         </div>
       )}
 
-      {/* Watermark logo with radial timer — behind chart */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
+      {/* Watermark logo + Sunburst Win Logo */}
+      <div className={`absolute inset-0 pointer-events-none transition-all duration-700 ${market.phase === "complete" ? "z-40" : "z-0"}`}>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="relative" style={{ width: 400, height: 400 }}>
-            {/* Logo at base opacity */}
-            <div className="absolute inset-0 flex items-center justify-center opacity-[0.28]">
+          <div className="relative flex items-center justify-center" style={{ width: 400, height: 400 }}>
+            
+            {/* Logo at base opacity (or full opacity when complete) */}
+            <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ${market.phase === "complete" ? "opacity-100 scale-[1.15]" : "opacity-[0.28] scale-100"}`}>
               {isCoreAsset ? (
                 <CryptoLogo asset={asset.symbol as "BTC" | "ETH" | "SOL"} size={400} />
               ) : asset.logoUrl ? (
@@ -277,30 +293,56 @@ export default function BinaryFeedCard({
                 </div>
               )}
             </div>
-            {/* Subtle radial timer ring — replaces the split-line fill */}
-            <svg className="absolute inset-0 h-full w-full -rotate-90 pointer-events-none">
-              <circle
-                cx="200"
-                cy="200"
-                r="198"
-                fill="none"
-                stroke={nearLock ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.15)"}
-                strokeWidth="4"
-                strokeDasharray="1244" // 2 * pi * 198
-                strokeDashoffset={1244 * (1 - timerPct / 100)}
-                className="transition-all duration-300"
-              />
-            </svg>
+
+            {/* Sunburst rings for WIN logic */}
+            {market.phase === "complete" && (
+              <>
+                <div className={`absolute h-full w-full rounded-full border-solid ${market.outcome === "up" ? "border-green-500/40" : "border-red-500/40"} animate-sunburst-ring`} style={{ animationDelay: "0ms" }} />
+                <div className={`absolute h-full w-full rounded-full border-solid ${market.outcome === "up" ? "border-green-500/30" : "border-red-500/30"} animate-sunburst-ring`} style={{ animationDelay: "500ms" }} />
+                <div className={`absolute h-full w-full rounded-full border-solid ${market.outcome === "up" ? "border-green-500/20" : "border-red-500/20"} animate-sunburst-ring`} style={{ animationDelay: "1000ms" }} />
+              </>
+            )}
+
+            {/* Subtle radial timer ring (hidden during complete) */}
+            {market.phase !== "complete" && (
+              <svg className="absolute inset-0 h-full w-full -rotate-90 pointer-events-none">
+                <circle
+                  cx="200"
+                  cy="200"
+                  r="198"
+                  fill="none"
+                  stroke={nearLock ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.15)"}
+                  strokeWidth="4"
+                  strokeDasharray="1244"
+                  strokeDashoffset={1244 * (1 - timerPct / 100)}
+                  className="transition-all duration-300"
+                />
+              </svg>
+            )}
+
             {/* Red flash overlay when entering lock zone */}
             {lockFlash && (
               <div className="absolute inset-0 rounded-full bg-red-500/40 animate-lock-flash" />
             )}
+
             {/* Lock countdown number in center */}
-            {lockCountdown !== null && (
+            {lockCountdown !== null && market.phase !== "complete" && (
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-7xl font-black tabular-nums text-red-400 drop-shadow-[0_0_20px_rgba(239,68,68,0.6)]">
+                <span className="text-7xl font-black tabular-nums text-red-500 drop-shadow-[0_0_30px_rgba(239,68,68,0.8)] animate-text-breathe">
                   {lockCountdown}
                 </span>
+              </div>
+            )}
+
+            {/* Centered WIN text inside the logo */}
+            {market.phase === "complete" && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-10 animate-fade-up">
+                 <div className={`text-7xl font-black drop-shadow-[0_4px_30px_rgba(0,0,0,0.9)] ${market.outcome === "up" ? "text-green-400" : "text-red-400"}`}>
+                   {market.outcome === "up" ? "↑ UP" : "↓ DOWN"}
+                 </div>
+                 <div className="mt-2 rounded-full border border-white/20 bg-black/50 px-4 py-1 text-xl font-black tracking-widest text-white drop-shadow-md backdrop-blur-md">
+                   WINS
+                 </div>
               </div>
             )}
           </div>
@@ -315,7 +357,7 @@ export default function BinaryFeedCard({
 
 
       {/* Top bar */}
-      <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between p-5 pt-6">
+      <div className={`absolute left-0 right-0 top-0 z-10 flex items-start justify-between p-5 pt-6 transition-all duration-700 ${isRewinding ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
         <div className="flex items-center gap-2">
           <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase backdrop-blur-sm ${
             market.phase === "betting" ? "bg-green-500/20 text-green-400" :
@@ -342,7 +384,9 @@ export default function BinaryFeedCard({
                 style={{ width: `${progressPct}%` }}
               />
             </div>
-            <span className="text-lg font-black tabular-nums text-white drop-shadow-lg">
+            <span className={`text-lg font-black tabular-nums drop-shadow-lg transition-all duration-300 ${
+              isBreathing ? "text-red-400 animate-text-breathe" : "text-white"
+            }`}>
               {countdown}
             </span>
           </div>
@@ -350,7 +394,7 @@ export default function BinaryFeedCard({
       </div>
 
       {/* Center — asset name + large live price */}
-      <div className="absolute left-0 right-0 top-1/3 z-10 flex flex-col items-center -translate-y-1/2">
+      <div className={`absolute left-0 right-0 top-1/3 z-10 flex flex-col items-center -translate-y-1/2 transition-all duration-700 ${isRewinding ? "opacity-0 scale-95 pointer-events-none" : "opacity-100 scale-100"}`}>
         <div className="mb-1 flex items-center gap-2">
           {/* Small logo next to name for pumpfun tokens */}
           {!isCoreAsset && asset.logoUrl && (
@@ -387,7 +431,7 @@ export default function BinaryFeedCard({
       </div>
 
       {/* Right sidebar — TikTok-style action buttons */}
-      <div className="absolute bottom-44 right-3 z-20 flex flex-col items-center gap-5 sm:right-5">
+      <div className={`absolute bottom-[240px] md:bottom-44 right-3 z-20 flex flex-col items-center gap-5 sm:right-5 transition-all duration-700 ${isRewinding ? "opacity-0 translate-x-10 pointer-events-none" : "opacity-100 translate-x-0"}`}>
         {/* Asset avatar — opens round history */}
         <button
           onClick={(e) => { e.stopPropagation(); onRoundHistory?.(); }}
@@ -534,7 +578,7 @@ export default function BinaryFeedCard({
       </div>
 
       {/* Bottom controls */}
-      <div className="relative z-10 p-5 pb-6 pr-16">
+      <div className={`relative z-10 p-5 pb-24 md:pb-6 pr-16 transition-all duration-700 ${isRewinding ? "opacity-0 translate-y-10 pointer-events-none" : "opacity-100 translate-y-0"}`}>
         {/* Pool info */}
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -568,10 +612,10 @@ export default function BinaryFeedCard({
 
         {market.phase === "complete" ? (
           <div className="rounded-2xl bg-white/5 p-5 text-center backdrop-blur-sm">
-            <p className={`text-3xl font-black ${market.outcome === "up" ? "text-green-400" : "text-red-400"}`}>
-              {market.outcome === "up" ? "↑ UP WINS" : "↓ DOWN WINS"}
+            <p className="text-xl font-black uppercase text-white/80 tracking-widest">
+              Round Complete
             </p>
-            <p className="mt-1 text-xs text-white/40">Next round starting...</p>
+            <p className="mt-1 text-xs text-white/40">Preparing next round...</p>
           </div>
         ) : market.phase === "locked" || market.phase === "resolving" ? (
           <div className="rounded-2xl bg-yellow-500/5 border border-yellow-500/20 p-5 text-center backdrop-blur-sm">

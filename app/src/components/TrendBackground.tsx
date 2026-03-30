@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 interface Props {
   price: number;
   sentiment?: number; // 0 (Red dominant) to 1 (Green dominant)
+  isRewinding?: boolean;
 }
 
 interface Particle {
@@ -20,7 +21,51 @@ interface Particle {
 
 const POOL_SIZE = 60; // Increased from 40 for more density
 
-export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
+function createArrowCanvas(dir: "up" | "down", dpr: number) {
+  const size = 15 * dpr; // Base logical size 15, scaled for retina
+  const padding = 20 * dpr;
+  const width = size * 3 + padding * 2;
+  const height = size * 5 + padding * 2;
+  
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return { canvas, width, height };
+
+  const x = width / 2;
+  const y = height / 2;
+
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  if (dir === "up") {
+    ctx.lineTo(x - size, y + size * 1.5);
+    ctx.lineTo(x - size * 0.4, y + size * 1.5);
+    ctx.lineTo(x - size * 0.4, y + size * 3);
+    ctx.lineTo(x + size * 0.4, y + size * 3);
+    ctx.lineTo(x + size * 0.4, y + size * 1.5);
+    ctx.lineTo(x + size, y + size * 1.5);
+  } else {
+    ctx.lineTo(x - size, y - size * 1.5);
+    ctx.lineTo(x - size * 0.4, y - size * 1.5);
+    ctx.lineTo(x - size * 0.4, y - size * 3);
+    ctx.lineTo(x + size * 0.4, y - size * 3);
+    ctx.lineTo(x + size * 0.4, y - size * 1.5);
+    ctx.lineTo(x + size, y - size * 1.5);
+  }
+  ctx.closePath();
+  
+  // Apply heavy glow and styling once to offscreen canvas
+  ctx.shadowBlur = 6 * dpr;
+  ctx.shadowColor = dir === "up" ? "rgba(34, 197, 94, 0.8)" : "rgba(239, 68, 68, 0.8)";
+  ctx.strokeStyle = dir === "up" ? "rgba(134, 239, 172, 1)" : "rgba(252, 165, 165, 1)";
+  ctx.lineWidth = 1.6 * dpr;
+  ctx.stroke();
+  
+  return { canvas, width, height };
+}
+
+export default function TrendBackground({ price, sentiment = 0.5, isRewinding = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [direction, setDirection] = useState<"up" | "down" | "flat">("flat");
   const [flash, setFlash] = useState(0); // For React UI if needed
@@ -35,7 +80,17 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
     direction: "flat" as "up" | "down" | "flat",
     lastPrice: price,
     currentSentiment: sentiment,
+    targetSentiment: sentiment,
+    isRewinding: isRewinding,
   });
+
+  useEffect(() => {
+    animStateRef.current.isRewinding = isRewinding;
+  }, [isRewinding]);
+
+  useEffect(() => {
+    animStateRef.current.targetSentiment = sentiment;
+  }, [sentiment]);
 
   useEffect(() => {
     if (price > lastPriceRef.current) {
@@ -87,47 +142,18 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
 
     const particles = particlesRef.current;
     
+    // Initialize offscreen canvases strictly once based on DPR
+    const upArrow = createArrowCanvas("up", dpr);
+    const downArrow = createArrowCanvas("down", dpr);
+    
     let frameCount = 0;
-
-    const drawArrow = (x: number, y: number, size: number, dir: "up" | "down", opacity: number) => {
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      if (dir === "up") {
-        ctx.lineTo(x - size, y + size * 1.5);
-        ctx.lineTo(x - size * 0.4, y + size * 1.5);
-        ctx.lineTo(x - size * 0.4, y + size * 3);
-        ctx.lineTo(x + size * 0.4, y + size * 3);
-        ctx.lineTo(x + size * 0.4, y + size * 1.5);
-        ctx.lineTo(x + size, y + size * 1.5);
-      } else {
-        ctx.lineTo(x - size, y - size * 1.5);
-        ctx.lineTo(x - size * 0.4, y - size * 1.5);
-        ctx.lineTo(x - size * 0.4, y - size * 3);
-        ctx.lineTo(x + size * 0.4, y - size * 3);
-        ctx.lineTo(x + size * 0.4, y - size * 1.5);
-        ctx.lineTo(x + size, y - size * 1.5);
-      }
-      ctx.closePath();
-      
-      // Add a subtle glow effect
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = dir === "up" ? "rgba(34, 197, 94, 0.6)" : "rgba(239, 68, 68, 0.6)";
-      
-      // Hollow (Stroked) arrows for performance and distinct look
-      ctx.strokeStyle = dir === "up" ? `rgba(134, 239, 172, ${opacity * 0.9})` : `rgba(252, 165, 165, ${opacity * 0.9})`;
-      ctx.lineWidth = 1.6;
-      ctx.stroke();
-      
-      // Reset shadow for other drawing
-      ctx.shadowBlur = 0;
-    };
 
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
       // 1. Dynamic Sentiment Background Fill
       // Smoothly interpolate sentiment in the ref instead of state
-      animStateRef.current.currentSentiment += (sentiment - animStateRef.current.currentSentiment) * 0.05;
+      animStateRef.current.currentSentiment += (animStateRef.current.targetSentiment - animStateRef.current.currentSentiment) * 0.05;
       const displaySentiment = animStateRef.current.currentSentiment;
       
       // Calculate color blend based on sentiment
@@ -190,11 +216,17 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
       }
 
       // Update and draw
+      const internalIsRewinding = animStateRef.current.isRewinding;
+
       for (const p of particles) {
         if (!p.active) continue;
 
-        p.y += p.speed;
-        p.life++;
+        const applySpeed = internalIsRewinding ? -p.speed * 8 : p.speed;
+        p.y += applySpeed;
+        
+        if (!internalIsRewinding) {
+          p.life++;
+        }
 
         // Fade in and out (Smoother: 30 frames)
         let currentOpacity = p.opacity;
@@ -205,10 +237,40 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
           currentOpacity = p.opacity * ((p.maxLife - p.life) / fadeFrames);
         }
 
-        if (p.life >= p.maxLife || (p.speed < 0 && p.y < -30) || (p.speed > 0 && p.y > height + 30)) {
+        if (
+          (!internalIsRewinding && (p.life >= p.maxLife || (p.speed < 0 && p.y < -30) || (p.speed > 0 && p.y > height + 30))) ||
+          (internalIsRewinding && ((applySpeed > 0 && p.y > height + 30) || (applySpeed < 0 && p.y < -30)))
+        ) {
           p.active = false;
         } else {
-          drawArrow(p.x, p.y, p.size, p.speed < 0 ? "up" : "down", currentOpacity);
+          // Offscreen Canvas Drawing — MASSIVE performance gain over drawing polys with shadow Blur 60x a frame!
+          const target = p.speed < 0 ? upArrow : downArrow;
+          const drawScale = p.size / 15; // 15 was the logical base size
+          const logicalWidth = target.width / dpr;
+          const logicalHeight = target.height / dpr;
+
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.scale(drawScale, drawScale);
+          ctx.globalAlpha = currentOpacity;
+          ctx.drawImage(target.canvas, -logicalWidth / 2, -logicalHeight / 2, logicalWidth, logicalHeight);
+          ctx.restore();
+        }
+      }
+
+      // Spawning for continuous tape effect during rewind
+      if (internalIsRewinding && frameCount % 2 === 0) {
+        const inactive = particles.find((p) => !p.active);
+        if (inactive) {
+          inactive.active = true;
+          inactive.x = Math.random() * width;
+          const isUpArrow = Math.random() > 0.5;
+          inactive.speed = isUpArrow ? -Math.random() * 2.5 - 2 : Math.random() * 2.5 + 2;
+          inactive.y = isUpArrow ? -20 : height + 20; 
+          inactive.size = Math.random() * 9 + 6;
+          inactive.maxLife = 100;
+          inactive.life = 50; 
+          inactive.opacity = Math.random() * 0.4 + 0.4;
         }
       }
 
@@ -222,7 +284,7 @@ export default function TrendBackground({ price, sentiment = 0.5 }: Props) {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       resizeObserver.disconnect();
     };
-  }, [sentiment]);
+  }, []); // Empty dependency array—setup runs exactly once!
 
   return (
     <canvas

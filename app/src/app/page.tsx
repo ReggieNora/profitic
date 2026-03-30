@@ -81,7 +81,7 @@ export default function HomePage() {
   const allLoaded = !loading && feedMarkets.length > 0;
 
   return (
-    <div className="relative -mt-14 h-screen w-full overflow-hidden bg-black">
+    <div className="relative -mt-14 h-[100dvh] w-full overflow-hidden bg-black">
       {/* Loading state */}
       {!allLoaded && (
         <div className="flex h-full items-center justify-center">
