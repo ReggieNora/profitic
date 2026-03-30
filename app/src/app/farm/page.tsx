@@ -6,9 +6,9 @@ import { useCrashGame } from "@/hooks/useCrashGame";
 
 export default function CrashGamePage() {
   const { publicKey } = useWallet();
-  const { 
-    round, currentMultiplier, userBalances, 
-    placeBet, lockAndPrecompute, runRound, resetRound, fundWallet 
+  const {
+    round, currentMultiplier, userBalances,
+    placeBet, lockAndPrecompute, runRound, resetRound, fundWallet
   } = useCrashGame();
 
   const [amount, setAmount] = useState("10");
@@ -39,7 +39,7 @@ export default function CrashGamePage() {
   return (
     <div className="relative min-h-[calc(100vh-3.5rem)] w-full bg-black p-4 sm:p-6 pb-24">
       <div className="mx-auto max-w-4xl space-y-6">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -60,13 +60,12 @@ export default function CrashGamePage() {
         {/* Main Game Screen */}
         <div className="relative flex h-64 flex-col items-center justify-center rounded-3xl border border-white/5 bg-surface-200 overflow-hidden shadow-2xl">
           <div className="absolute inset-0 bg-gradient-to-t from-red-500/5 to-transparent shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]" />
-          
-          <p className={`relative z-10 text-7xl sm:text-9xl font-black tracking-tighter transition-all duration-75 ${
-            round.status === "ENDED" ? "text-red-500 scale-110 drop-shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "text-white drop-shadow-md"
-          }`}>
+
+          <p className={`relative z-10 text-7xl sm:text-9xl font-black tracking-tighter transition-all duration-75 ${round.status === "ENDED" ? "text-red-500 scale-110 drop-shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "text-white drop-shadow-md"
+            }`}>
             {currentMultiplier.toFixed(2)}x
           </p>
-          
+
           <p className="relative z-10 mt-6 rounded-full bg-black/50 px-4 py-1 text-sm font-bold uppercase tracking-widest text-white/60 backdrop-blur-md border border-white/10">
             {round.status === "OPEN" && "Accepting Bets..."}
             {round.status === "LOCKED" && "Round Locked - Calculating"}
@@ -96,14 +95,14 @@ export default function CrashGamePage() {
 
         {/* Action Area */}
         <div className="grid gap-4 md:grid-cols-3">
-          
+
           <div className="col-span-1 space-y-4 rounded-3xl border border-white/5 bg-surface-300 p-5 sm:p-6">
             <h2 className="text-sm font-bold uppercase tracking-wider text-white/60">Place Bet</h2>
-            
+
             <div>
               <label className="text-[10px] uppercase font-bold text-white/40">Bet Amount</label>
               <div className="relative mt-1">
-                <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} disabled={round.status !== "OPEN"} className="w-full rounded-xl border border-white/10 bg-black p-3 pl-8 text-white outline-none transition-all focus:border-emerald-500/50" />
+                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} disabled={round.status !== "OPEN"} className="w-full rounded-xl border border-white/10 bg-black p-3 pl-8 text-white outline-none transition-all focus:border-emerald-500/50" />
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30">$</span>
               </div>
             </div>
@@ -111,7 +110,7 @@ export default function CrashGamePage() {
             <div>
               <label className="text-[10px] uppercase font-bold text-white/40">Target Multiplier</label>
               <div className="relative mt-1">
-                <input type="number" step="0.1" value={target} onChange={e=>setTarget(e.target.value)} disabled={round.status !== "OPEN"} className="w-full rounded-xl border border-white/10 bg-black p-3 pr-8 text-white outline-none transition-all focus:border-emerald-500/50" />
+                <input type="number" step="0.1" value={target} onChange={e => setTarget(e.target.value)} disabled={round.status !== "OPEN"} className="w-full rounded-xl border border-white/10 bg-black p-3 pr-8 text-white outline-none transition-all focus:border-emerald-500/50" />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 font-bold">x</span>
               </div>
             </div>
@@ -141,7 +140,7 @@ export default function CrashGamePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {[...round.bets].sort((a,b) => b.amount - a.amount).map(bet => (
+                  {[...round.bets].sort((a, b) => b.amount - a.amount).map(bet => (
                     <tr key={bet.id} className="transition-colors hover:bg-white/5">
                       <td className="px-4 py-3 font-mono text-xs">{bet.user}</td>
                       <td className="px-4 py-3 font-bold text-white">{bet.amount.toFixed(2)}</td>

@@ -247,7 +247,7 @@ export default function BinaryFeedCard({
 
   const formatUsd = (v: number) => {
     if (v >= 10000) return `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-    if (v >= 1) return `$${v.toFixed(2)}`;
+    if (v >= 1) return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     if (v >= 0.01) return `$${v.toFixed(4)}`;
     return `$${v.toFixed(8)}`;
   };
@@ -270,7 +270,7 @@ export default function BinaryFeedCard({
 
       {/* Watermark logo + Sunburst Win Logo */}
       <div className={`absolute inset-0 pointer-events-none transition-all duration-700 ${market.phase === "complete" ? "z-40" : "z-0"}`}>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="absolute top-[38%] left-1/2 -translate-x-1/2 -translate-y-1/2">
           <div className="relative flex items-center justify-center" style={{ width: 400, height: 400 }}>
             
             {/* Logo at base opacity (or full opacity when complete) */}
@@ -303,15 +303,15 @@ export default function BinaryFeedCard({
               </>
             )}
 
-            {/* Subtle radial timer ring (hidden during complete) */}
-            {market.phase !== "complete" && (
+            {/* Subtle radial timer ring (hidden during complete and lock countdown) */}
+            {market.phase !== "complete" && lockCountdown === null && (
               <svg className="absolute inset-0 h-full w-full -rotate-90 pointer-events-none">
                 <circle
                   cx="200"
                   cy="200"
                   r="198"
                   fill="none"
-                  stroke={nearLock ? "rgba(239,68,68,0.4)" : "rgba(255,255,255,0.15)"}
+                  stroke="rgba(255,255,255,0.15)"
                   strokeWidth="4"
                   strokeDasharray="1244"
                   strokeDashoffset={1244 * (1 - timerPct / 100)}
@@ -320,19 +320,6 @@ export default function BinaryFeedCard({
               </svg>
             )}
 
-            {/* Red flash overlay when entering lock zone */}
-            {lockFlash && (
-              <div className="absolute inset-0 rounded-full bg-red-500/40 animate-lock-flash" />
-            )}
-
-            {/* Lock countdown number in center */}
-            {lockCountdown !== null && market.phase !== "complete" && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-7xl font-black tabular-nums text-red-500 drop-shadow-[0_0_30px_rgba(239,68,68,0.8)] animate-text-breathe">
-                  {lockCountdown}
-                </span>
-              </div>
-            )}
 
             {/* Centered WIN text inside the logo */}
             {market.phase === "complete" && (
@@ -394,7 +381,7 @@ export default function BinaryFeedCard({
       </div>
 
       {/* Center — asset name + large live price */}
-      <div className={`absolute left-0 right-0 top-1/3 z-10 flex flex-col items-center -translate-y-1/2 transition-all duration-700 ${isRewinding ? "opacity-0 scale-95 pointer-events-none" : "opacity-100 scale-100"}`}>
+      <div className={`absolute left-0 right-0 top-[38%] z-10 flex flex-col items-center -translate-y-1/2 transition-all duration-700 ${isRewinding || market.phase === "complete" ? "opacity-0 scale-95 pointer-events-none" : "opacity-100 scale-100"}`}>
         <div className="mb-1 flex items-center gap-2">
           {/* Small logo next to name for pumpfun tokens */}
           {!isCoreAsset && asset.logoUrl && (
@@ -428,6 +415,25 @@ export default function BinaryFeedCard({
             &middot; {isCoreAsset ? "Pyth Oracle" : "CoinGecko"}
           </span>
         </div>
+      </div>
+
+      {/* Z-20 Lock Overlay (Blurs out the price and flashes lock warnings) */}
+      <div className="absolute top-[38%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+        {(lockCountdown !== null || lockFlash) && market.phase !== "complete" && (
+          <div className="relative flex h-[400px] w-[400px] items-center justify-center rounded-full bg-black/20 backdrop-blur-[3px] shadow-[inset_0_0_80px_rgba(0,0,0,0.6)] transition-all animate-fade-in">
+            
+            {lockFlash && (
+              <div className="absolute inset-0 rounded-full bg-red-500/40 animate-lock-flash" />
+            )}
+            
+            {lockCountdown !== null && (
+              <span className="text-[140px] font-black tabular-nums tracking-tighter text-red-500/90 drop-shadow-[0_0_60px_rgba(239,68,68,0.8)] animate-text-breathe">
+                {lockCountdown}
+              </span>
+            )}
+            
+          </div>
+        )}
       </div>
 
       {/* Right sidebar — TikTok-style action buttons */}
@@ -578,36 +584,41 @@ export default function BinaryFeedCard({
       </div>
 
       {/* Bottom controls */}
-      <div className={`relative z-10 p-5 pb-24 md:pb-6 pr-16 transition-all duration-700 ${isRewinding ? "opacity-0 translate-y-10 pointer-events-none" : "opacity-100 translate-y-0"}`}>
-        {/* Pool info */}
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase text-white/40">Pool</span>
-            <span className="text-sm font-bold text-white">{formatLamports(market.totalPool)} SOL</span>
+      <div className={`relative z-10 p-5 pb-24 md:pb-6 transition-all duration-700 ${isRewinding ? "opacity-0 translate-y-10 pointer-events-none" : "opacity-100 translate-y-0"}`}>
+        
+        {/* Pool section with explicit right padding to dodge floating icons */}
+        <div className="pr-14">
+          {/* Pool info */}
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase text-white/40">Pool</span>
+              <span className="text-sm font-bold text-white">{formatLamports(market.totalPool)} SOL</span>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); onTrade(); }}
+              className="rounded-full bg-white/10 px-4 py-1.5 text-[11px] font-bold text-white backdrop-blur-sm transition-all hover:bg-white/20 active:scale-95"
+            >
+              Trade Details
+            </button>
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onTrade(); }}
-            className="rounded-full bg-white/10 px-4 py-1.5 text-[11px] font-bold text-white backdrop-blur-sm transition-all hover:bg-white/20 active:scale-95"
-          >
-            Trade Details
-          </button>
-        </div>
 
-        {/* Pool bar */}
-        <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-red-500/30">
-          <div className="h-full rounded-full bg-green-500 transition-all duration-500" style={{ width: `${upPct}%` }} />
-        </div>
-        <div className="mb-4 flex items-center justify-between text-xs">
-          <span>
-            <span className="font-bold text-green-400">UP</span>
-            <span className="ml-1 text-white/50">{formatLamports(market.upPool)}</span>
-            <span className="ml-1 font-bold text-green-400">{upPayout > 0 ? `${upPayout.toFixed(2)}x` : ""}</span>
-          </span>
-          <span>
-            <span className="font-bold text-red-400">{downPayout > 0 ? `${downPayout.toFixed(2)}x` : ""}</span>
-            <span className="ml-1 text-white/50">{formatLamports(market.downPool)}</span>
-            <span className="ml-1 font-bold text-red-400">DOWN</span>
-          </span>
+          {/* Pool bar */}
+          <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-red-500/30">
+            <div className="h-full rounded-full bg-green-500 transition-all duration-500" style={{ width: `${upPct}%` }} />
+          </div>
+          
+          <div className="mb-4 flex items-center justify-between text-xs">
+            <span>
+              <span className="font-bold text-green-400">UP</span>
+              <span className="ml-1 text-white/50">{formatLamports(market.upPool)}</span>
+              <span className="ml-1 font-bold text-green-400">{upPayout > 0 ? `${upPayout.toFixed(2)}x` : ""}</span>
+            </span>
+            <span>
+              <span className="font-bold text-red-400">{downPayout > 0 ? `${downPayout.toFixed(2)}x` : ""}</span>
+              <span className="ml-1 text-white/50">{formatLamports(market.downPool)}</span>
+              <span className="ml-1 font-bold text-red-400">DOWN</span>
+            </span>
+          </div>
         </div>
 
         {market.phase === "complete" ? (
